@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* HoopCouncil: a coach's whiteboard. Cool board surface, navy marker ink,
+   blue/red dry-erase accents; hardwood only appears on the court itself. */
+@theme {
+  --color-board: #eef1f4;
+  --color-board-2: #e3e8ee;
+  --color-sheet: #fbfcfd;
+  --color-ink: #18233a;
+  --color-ink-soft: #4a566d;
+  --color-rule: #c3cbd6;
+  --color-marker: #2050c8;
+  --color-marker-red: #c8322b;
+  --color-wood: #d8a46c;
+  --color-wood-dark: #b98247;
+
+  --color-p-curry: #2050c8;
+  --color-p-kobe: #6a3fb5;
+  --color-p-jordan: #c8322b;
+  --color-p-durant: #0f8a7e;
+  --color-p-lebron: #b86e0c;
+
+  --font-display: var(--font-barlow), "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: var(--font-atkinson), "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    background: var(--color-board);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    min-height: 100vh;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: 0.005em;
+    line-height: 1.05;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-marker);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* Faint ghosting of erased marker, only on the main board backdrop. */
+.board-texture {
+  background-image:
+    radial-gradient(ellipse 60% 40% at 15% 10%, rgba(32, 80, 200, 0.035), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 85% 30%, rgba(200, 50, 43, 0.03), transparent 70%);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* hand-drawn marker underline for the active round */
+.marker-underline {
+  background-image: linear-gradient(transparent 70%, rgba(32, 80, 200, 0.22) 70%);
+}

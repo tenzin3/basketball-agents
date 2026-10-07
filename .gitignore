@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+data/raw/
+data/simulations/
+node_modules/
+.next/
+frontend/next-env.d.ts
+tests/fixtures/html/
+
+.hoopcouncil_bundle.tgz
