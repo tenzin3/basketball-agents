@@ -198,8 +198,9 @@ def parse_player_tables(html: str, url: str, retrieved_at: str) -> dict:
             elif meta.get("awards") and not rec.get("awards_text"):
                 rec["awards_text"] = meta["awards"]
         for row in t.foot:
-            first = row.first_text()
-            if first.lower().startswith("career"):
+            first = row.first_text().strip()
+            # overall career row: "Career" (older layout) or "17 Yrs" (current layout); first match only
+            if (first.lower().startswith("career") or re.match(r"^\d+ Yrs?$", first)) and kind not in career_rows.get(stat_type, {}):
                 vals, _ = map_row(row, kind)
                 career_rows.setdefault(stat_type, {})[kind] = vals
     # Seasons with several team rows: the combined row is the season record; team rows are splits.
@@ -226,8 +227,40 @@ def parse_player_tables(html: str, url: str, retrieved_at: str) -> dict:
             s = _season_label(row.first_text())
             if s:
                 all_star.append({"season": s, "note": row.special_text})
+    # Playoff series table: official round codes per (season, opponent)
+    series = []
+    t = find_table(tables, ["playoffs_series"], ["playoff series"])
+    if t is not None:
+        for row in t.body:
+            season = _season_label(row.first_text())
+            rnd = row.get("Round") or row.by_stat("ps_round")
+            opp = row.get("Opp") or row.by_stat("opp_name_abbr")
+            team = row.get("Team") or row.by_stat("team_name_abbr")
+            res = row.get("W/L") or row.by_stat("series_result")
+            if not season or rnd is None or opp is None:
+                continue
+            series.append({"season": season, "round_code": rnd.text,
+                           "playoff_round": round_from_code(rnd.text),
+                           "team": (team_from_hrefs(team.hrefs)[0] or team.text) if team else None,
+                           "opponent": team_from_hrefs(opp.hrefs)[0] or opp.text,
+                           "result": res.text if res else None,
+                           "provenance": provenance(SOURCE, url, retrieved_at, season, "playoffs")})
     return {"seasons": out, "career_rows": career_rows, "dnp_seasons": dnp, "all_star_rows": all_star,
-            "tables_found": found_tables}
+            "playoff_series": series, "tables_found": found_tables}
+
+
+def round_from_code(code: str | None) -> str | None:
+    """'WC1'/'EC1' first round, 'WCS'/'ECS' semis, 'WCF'/'ECF' conference finals, 'FIN' NBA Finals."""
+    c = (code or "").strip().upper()
+    if c in ("FIN", "F", "FINALS", "NBA FINALS"):
+        return "nba_finals"
+    if c.endswith("CF"):
+        return "conference_finals"
+    if c.endswith("CS"):
+        return "conference_semifinals"
+    if c.endswith("C1") or c.endswith("FR"):
+        return "first_round"
+    return None
 
 
 def _find_gamelog_table(tables: dict, ids: list) -> Table | None:
@@ -437,6 +470,12 @@ class BasketballReferenceSource(DataSource):
         if self.include_gamelogs:
             base = player.bref_url[:-5]  # strip .html
             reg_seasons = sorted({s["season"] for s in tables["seasons"] if s["stat_type"] == "regular_season"})
+            probe = f"{base}/gamelog/{int(reg_seasons[0][:4]) + 1}" if reg_seasons else None
+            if probe and not self.fetcher.allowed(probe):
+                log.info("robots.txt disallows per-season game logs for %s; skipping them (playoff logs still fetched)",
+                         player.full_name)
+                frag["gamelog_notes"] = ["regular-season game logs disallowed by robots.txt; not collected"]
+                reg_seasons = []
             for season in reg_seasons:
                 end_year = int(season[:4]) + 1
                 url = f"{base}/gamelog/{end_year}"

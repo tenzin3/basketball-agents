@@ -88,6 +88,30 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(rounds["CCC"], "nba_finals")
         self.assertEqual(rounds["ZZZ"], "conference_finals")
         self.assertEqual(rounds["XXX"], "first_round")
+        # 2015-16 rounds come from the source series table
+        self.assertEqual({x["round_confidence"] for x in g}, {"labeled"})
+        # 2014-15 has no series rows -> inferred
+        g15 = [x for x in self.ds["game_logs"] if x["stat_type"] == "playoffs" and x["season"] == "2014-15" and x.get("playoff_round")]
+        self.assertEqual({x["round_confidence"] for x in g15}, {"inferred"})
+
+    def test_career_row_yrs_label(self):
+        self.assertIn("totals", self.ds["career_rows_source"]["regular_season"])
+        self.assertEqual(self.ds["career_rows_source"]["regular_season"]["totals"]["g"], 219)
+
+    def test_robots_disallowed_gamelogs(self):
+        ds = synthetic_dataset(disallow_gamelogs=True)
+        self.assertFalse([g for g in ds["game_logs"] if g["stat_type"] == "regular_season"])
+        self.assertTrue([g for g in ds["game_logs"] if g["stat_type"] == "playoffs"])
+        self.assertTrue(ds["collection_notes"])
+        rep = validate(ds)
+        self.assertEqual(rep["coverage"]["Game logs"]["status"], "PLAYOFFS ONLY")
+        self.assertEqual(rep["summary"].get("FAIL", 0), 0)
+
+    def test_single_game_efg_above_one_is_valid(self):
+        ds = copy.deepcopy(self.ds)
+        ds["game_logs"][0]["stats"]["efg_pct"] = 1.5
+        rep = validate(ds)
+        self.assertEqual({c["check"]: c["status"] for c in rep["checks"]}["value_ranges"], "PASS")
 
 
 class DeriveTests(unittest.TestCase):

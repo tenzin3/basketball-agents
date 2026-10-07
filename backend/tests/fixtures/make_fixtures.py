@@ -120,7 +120,8 @@ def build():
     per_game = per_game.replace(dnp, dnp + '<tr class="thead"><th>Season</th></tr>')
     totals_rows = season_rows(rows, False)
     totals = (f'<table id="totals_stats"><caption>Totals Table</caption>{head(labels)}<tbody>{totals_rows}</tbody>'
-              f'<tfoot><tr><th>Career</th><td></td><td></td><td>NBA</td><td></td>{basic_cells(career, False)}<td></td></tr></tfoot></table>')
+              f'<tfoot><tr><th>3 Yrs</th><td></td><td></td><td>NBA</td><td></td>{basic_cells(career, False)}<td></td></tr>'
+              f'<tr><th>82 Game Avg</th><td></td><td></td><td></td><td></td>{basic_cells(career, True)}<td></td></tr></tfoot></table>')
     # advanced (inside a comment, with an empty spacer column)
     adv_labels = ["G", "MP", "PER", "TS%", "3PAr", "FTr", "ORB%", "DRB%", "TRB%", "AST%", "STL%", "BLK%", "TOV%",
                   "USG%", "", "OWS", "DWS", "WS", "WS/48", "", "OBPM", "DBPM", "BPM", "VORP"]
@@ -170,7 +171,13 @@ def build():
             '<p><strong>Born:</strong> <span id="necro-birth" data-birth="1990-01-01">January 1, 1990</span></p>'
             '<p><strong>Draft:</strong> <a>Team Alpha</a>, 1st round (5th pick, 5th overall), <a>2012 NBA Draft</a></p>'
             '</div><ul id="bling"><li>1x MVP</li><li>1x All Star</li><li>1x NBA Champ</li><li>2015-16 Scoring Champ</li></ul>')
-    page = f"<html><body>{meta}{per_game}{totals}{adv}{shooting}{pbp}{po}{po_tot}{po_adv}</body></html>"
+    ser_rows = "".join(
+        f'<tr><th data-stat="year_id">2015-16</th><td>26</td><td><a href="/teams/BBB/2016.html">BBB</a></td><td>NBA</td>'
+        f'<td data-stat="ps_round">{code}</td><td><a href="/teams/{opp}/2016.html">{opp}</a></td><td>W (4-1)</td></tr>'
+        for code, opp in (("WC1", "XXX"), ("WCS", "YYY"), ("WCF", "ZZZ"), ("FIN", "CCC")))
+    series = (f'<!--<table id="playoffs_series"><thead><tr><th>Season</th><th>Age</th><th>Team</th><th>Lg</th><th>Round</th>'
+              f'<th>Opp</th><th>W/L</th></tr></thead><tbody>{ser_rows}</tbody></table>-->')
+    page = f"<html><body>{meta}{series}{per_game}{totals}{adv}{shooting}{pbp}{po}{po_tot}{po_adv}</body></html>"
     (OUT / "player.html").write_text(page)
 
     # playoff game log: 2014-15 two series, 2015-16 four series (Finals vs CCC)

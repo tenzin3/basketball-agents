@@ -5,8 +5,8 @@
 | Page | Used for |
 |---|---|
 | `/players/<l>/<id>.html` | Bio (height, weight, position, draft, birth date, Hall of Fame) and site badges, used only for cross-checks. Per-game, totals, per-100, advanced, shooting and play-by-play tables for both regular season and playoffs, plus the awards column. League-leader markers come from bold per-game cells. |
-| `/players/<l>/<id>/gamelog/<year>` | Regular-season game logs, one request per season |
-| `/players/<l>/<id>/gamelog-playoffs/` | Playoff game logs. Series and rounds are inferred; see below. |
+| `/players/<l>/<id>/gamelog/<year>` | Regular-season game logs. The site's `robots.txt` currently disallows these pages, so the scraper checks once and skips them; reports show "PLAYOFFS ONLY". |
+| `/players/<l>/<id>/gamelog-playoffs/` | Playoff game logs. Rounds come from the player page's `playoffs_series` table (WC1/WCS/WCF/FIN). |
 | `/playoffs/` | Champion, runner-up and Finals MVP for each season |
 | `/awards/{mvp,dpoy,roy,all_star_mvp,all_league,all_defense}.html` | Award winners, which are authoritative for those awards |
 | `/leagues/NBA_stats_per_game.html` | League averages, for era-relative comparisons |
@@ -48,9 +48,11 @@ Every statistic row keeps the following:
 
 * **Wingspan.** Not published by these sources, so it is stored as `null`.
 * **Shot distance.** Basketball Reference starts in 1996-97, so Jordan's coverage is partial.
-* **Playoff rounds.** Labels come from opponent sequence in the game logs. NBA Finals are confirmed against the
-  champions list (`round_confidence = confirmed`). Earlier rounds are `consistent` when the team reached the Finals
-  with four series logged; otherwise they're `inferred`.
+* **Playoff rounds.** Labels come from the source's playoff-series table (`round_confidence = labeled`). Only if
+  that table is missing does the pipeline fall back to opponent sequence in the game logs (`confirmed`,
+  `consistent` or `inferred`).
+* **Regular-season game logs.** Not collected because `robots.txt` disallows them. Career highs and 40-point
+  games therefore come from playoff logs only, and the context says so.
 * **Close games.** These are full-game box scores of games decided by 3 points or fewer. They are not late-game
   possessions.
 * **Awards from the awards column.** Basketball Reference records voting finishes such as "MVP-3". Only rank 1

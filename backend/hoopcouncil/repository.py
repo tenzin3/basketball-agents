@@ -148,7 +148,8 @@ class SQLRepository(Repository):
             return {"schema_version": meta.get("schema_version", 1), "player": player, "seasons": seasons,
                     "career_rows_source": meta.get("career_rows_source") or {}, "game_logs": game_logs,
                     "achievements": achievements, "bling": [{"text": b, "provenance": p.bio_provenance} for b in (p.bling or [])],
-                    "dnp_seasons": meta.get("dnp_seasons") or [], "league_averages": league, "champions": champions,
+                    "dnp_seasons": meta.get("dnp_seasons") or [], "playoff_series": meta.get("playoff_series") or [],
+                    "collection_notes": meta.get("collection_notes") or [], "league_averages": league, "champions": champions,
                     "clutch": clutch, "play_types": play_types, "tracking_shots": tracking,
                     "sources": meta.get("sources") or [], "ingest_errors": meta.get("ingest_errors") or []}
 

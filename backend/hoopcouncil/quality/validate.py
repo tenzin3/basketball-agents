@@ -69,6 +69,10 @@ def check_gamelogs(ds: dict) -> list:
     if not logs:
         return [_check("gamelog_counts", "WARN", "no game logs stored")]
     for st in ("regular_season", "playoffs"):
+        if not any(g["stat_type"] == st for g in logs):
+            note = "; ".join(ds.get("collection_notes", [])) or "none stored"
+            out.append(_check(f"gamelog_counts[{st}]", "PASS", f"not collected ({note})"))
+            continue
         played = Counter(g["season"] for g in logs if g["stat_type"] == st and g.get("status") == "played")
         mism = {}
         for l in season_lines(ds, st):
@@ -150,7 +154,9 @@ def check_ranges(ds: dict) -> list:
         for k, v in (d or {}).items():
             if not isinstance(v, (int, float)) or isinstance(v, bool):
                 continue
-            if PCT_KEY.search(k) and not (0 <= v <= 1):
+            # eFG% and TS% can legitimately exceed 1.0 in tiny samples (e.g. 1-for-1 from three = 1.5)
+            upper = 1.5 if k in ("efg_pct", "ts_pct") else 1.0
+            if PCT_KEY.search(k) and not (0 <= v <= upper):
                 bad.append(f"{where}.{k}={v}")
             if k in COUNT_KEYS and v < 0:
                 bad.append(f"{where}.{k}={v} negative")
@@ -189,6 +195,7 @@ def coverage_report(ds: dict, derived: dict | None = None) -> dict:
     adv_have = [l for l in reg if l.get("advanced")]
     finals_ach = [a for a in ds.get("achievements", []) if a["achievement_type"] == "NBA_FINALS_APPEARANCE"]
     finals_logged = {g["season"] for g in ds.get("game_logs", []) if g.get("playoff_round") == "nba_finals"}
+    labeled = any(g.get("round_confidence") == "labeled" for g in ds.get("game_logs", []))
     rep = {
         "Career bio": {"status": "COMPLETE" if bio_have == len(bio_fields) else ("PARTIAL" if bio_have else "MISSING"),
                        "detail": f"{bio_have}/{len(bio_fields)} core fields; wingspan: not published by sources (null)"},
@@ -198,10 +205,12 @@ def coverage_report(ds: dict, derived: dict | None = None) -> dict:
         "Playoffs": {"status": status(len([l for l in po if l.get("per_game")]), len(po)) if po else "MISSING",
                      "detail": f"{len(po)} postseasons"},
         "Finals splits": {"status": status(len(finals_logged), len(finals_ach)) if finals_ach else "N/A",
-                          "detail": f"{len(finals_logged)}/{len(finals_ach)} Finals with game-log splits (round labels inferred)"},
+                          "detail": f"{len(finals_logged)}/{len(finals_ach)} Finals with game-log splits (round labels {'from the source series table' if labeled else 'inferred'})"},
         "Awards": {"status": "COMPLETE" if ds.get("achievements") else "MISSING",
                    "detail": f"{len(ds.get('achievements', []))} award records"},
-        "Game logs": {"status": status(len(gl_have), len(reg)), "detail": f"{len(gl_have)}/{len(reg)} regular seasons"},
+        "Game logs": ({"status": "PLAYOFFS ONLY", "detail": f"playoff game logs stored; regular season not collected ({'; '.join(ds['collection_notes'])})"}
+                      if not gl_have and ds.get("collection_notes") else
+                      {"status": status(len(gl_have), len(reg)), "detail": f"{len(gl_have)}/{len(reg)} regular seasons"}),
         "Shot profile": {"status": status(len(shot_have), len(reg)) if shot_have else ("N/A" if not shot_eligible else "MISSING"),
                          "detail": f"{len(shot_have)}/{len(reg)} seasons (source shot tracking starts 1996-97)"},
         "Play-type data": {"status": status(len(pt_have), len(reg)) if pt_have else "MISSING",

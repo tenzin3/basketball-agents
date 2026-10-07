@@ -45,7 +45,8 @@ def upsert_player(session, ds: dict) -> m.Player:
     player.bling = [b["text"] for b in ds.get("bling", [])]
     player.raw_dataset_meta = {"sources": ds.get("sources"), "ingest_errors": ds.get("ingest_errors"),
                                "dnp_seasons": ds.get("dnp_seasons"), "career_rows_source": ds.get("career_rows_source"),
-                               "schema_version": ds.get("schema_version")}
+                               "schema_version": ds.get("schema_version"), "playoff_series": ds.get("playoff_series"),
+                               "collection_notes": ds.get("collection_notes")}
     return player
 
 

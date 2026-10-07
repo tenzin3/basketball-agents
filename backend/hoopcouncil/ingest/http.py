@@ -107,19 +107,28 @@ class PoliteFetcher:
         p = urlparse(url)
         root = f"{p.scheme}://{p.netloc}"
         if root not in self._robots:
-            rp = urllib.robotparser.RobotFileParser()
-            try:
-                r = self._get_session().get(root + "/robots.txt", timeout=self.timeout_s)
-                if r.status_code == 200:
-                    rp.parse(r.text.splitlines())
-                    self._robots[root] = rp
-                else:
-                    self._robots[root] = None  # no robots file -> allowed
-            except Exception as e:  # network trouble: be conservative but don't crash
-                log.warning("robots.txt unavailable for %s (%s); proceeding cautiously", root, e)
+            robots_url = root + "/robots.txt"
+            res = self.cached(robots_url)  # robots.txt is cached too, so offline re-runs make the same decisions
+            if res is None and not self.offline:
+                try:
+                    r = self._get_session().get(robots_url, timeout=self.timeout_s)
+                    res = FetchResult(url=robots_url, status=r.status_code, text=r.text, retrieved_at=utcnow_iso(), from_cache=False)
+                    if r.status_code in (200, 404):
+                        self._store(res)
+                except Exception as e:  # network trouble: proceed, rate limits still apply
+                    log.warning("robots.txt unavailable for %s (%s); proceeding cautiously", root, e)
+            if res is not None and res.status == 200:
+                rp = urllib.robotparser.RobotFileParser()
+                rp.parse(res.text.splitlines())
+                self._robots[root] = rp
+            else:
                 self._robots[root] = None
         rp = self._robots[root]
         return True if rp is None else rp.can_fetch(self.user_agent, url)
+
+    def allowed(self, url: str) -> bool:
+        """Public robots.txt check (cached per host). Offline mode never blocks cached pages."""
+        return self._allowed(url)
 
     def _wait(self, host: str) -> None:
         last = self._last_request.get(host)

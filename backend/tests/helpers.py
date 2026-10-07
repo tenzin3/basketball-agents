@@ -22,8 +22,12 @@ ROUTES = {
 
 
 class FixtureFetcher:
-    def __init__(self):
+    def __init__(self, disallow_gamelogs: bool = False):
         self.requested = []
+        self.disallow_gamelogs = disallow_gamelogs
+
+    def allowed(self, url):
+        return not (self.disallow_gamelogs and "/gamelog/" in url)
 
     def get(self, url, params=None, allow_404=True):
         self.requested.append(url)
@@ -34,19 +38,25 @@ class FixtureFetcher:
         return None
 
 
+_built = False
+
+
 def ensure_fixtures():
-    if not (FIX / "player.html").exists():
+    """Regenerate the synthetic fixtures once per test run so they never go stale."""
+    global _built
+    if not _built:
         from tests.fixtures.make_fixtures import build
 
         build()
+        _built = True
 
 
-def synthetic_dataset():
+def synthetic_dataset(disallow_gamelogs: bool = False):
     from hoopcouncil.ingest.dataset import assemble
     from hoopcouncil.ingest.sources.bref import BasketballReferenceSource
 
     ensure_fixtures()
-    src = BasketballReferenceSource(FixtureFetcher())
+    src = BasketballReferenceSource(FixtureFetcher(disallow_gamelogs))
     league = src.collect_league()
     frag = src.collect_player(SYNTH, league)
     return assemble(SYNTH, frag, league)

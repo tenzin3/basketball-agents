@@ -36,7 +36,7 @@ def _round_from_label(label: str | None) -> str | None:
     return None
 
 
-def infer_playoff_rounds(game_logs: list, champions: list) -> None:
+def infer_playoff_rounds(game_logs: list, champions: list, series_table: list | None = None) -> None:
     """Annotate playoff games with series_index and round (in place).
 
     Method (documented limitation): games are grouped into series by consecutive opponent.
@@ -47,6 +47,7 @@ def infer_playoff_rounds(game_logs: list, champions: list) -> None:
     `round_confidence = 'inferred'`.
     """
     finals = {c["season"]: {c["champion"], c["runner_up"]} for c in champions}
+    official = {(r["season"], r["opponent"]): r["playoff_round"] for r in (series_table or []) if r.get("playoff_round")}
     by_season: dict = {}
     for g in game_logs:
         if g["stat_type"] == "playoffs" and g.get("status") == "played" and g.get("opponent"):
@@ -62,7 +63,7 @@ def infer_playoff_rounds(game_logs: list, champions: list) -> None:
         n = len(series)
         for i, s in enumerate(series):
             label = next((g.get("series_label") for g in s["games"] if g.get("series_label")), None)
-            labeled = _round_from_label(label)
+            labeled = official.get((season, s["opponent"])) or _round_from_label(label)
             if labeled:
                 for g in s["games"]:
                     g["series_index"] = i + 1
@@ -161,7 +162,7 @@ def assemble(cfg: PlayerConfig, bref_frag: dict, league: dict, nba_frag: dict | 
             if t and not COMBINED_TEAM_RE.match(t) and t not in teams:
                 teams.append(t)
     game_logs = bref_frag.get("game_logs", [])
-    infer_playoff_rounds(game_logs, league.get("champions", []))
+    infer_playoff_rounds(game_logs, league.get("champions", []), bref_frag.get("playoff_series"))
     player = {
         "slug": cfg.slug, "full_name": bio.get("full_name") or cfg.full_name, "bref_id": cfg.bref_id,
         "nba_id": cfg.nba_id, **{k: v for k, v in bio.items() if k not in ("full_name", "bling")},
@@ -183,6 +184,8 @@ def assemble(cfg: PlayerConfig, bref_frag: dict, league: dict, nba_frag: dict | 
         "achievements": build_achievements(cfg, seasons, league, bio, bref_frag.get("all_star_rows", [])),
         "bling": [{"text": b, "provenance": bio["provenance"]} for b in bio.get("bling", [])],
         "dnp_seasons": bref_frag.get("dnp_seasons", []),
+        "playoff_series": bref_frag.get("playoff_series", []),
+        "collection_notes": bref_frag.get("gamelog_notes", []),
         "league_averages": league_avgs,
         "champions": [c for c in league.get("champions", []) if c["season"] in set(reg)],
         "clutch": nba_frag.get("clutch", []),

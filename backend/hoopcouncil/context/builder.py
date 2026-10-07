@@ -78,9 +78,12 @@ def build_package(ds: dict, derived: dict) -> dict:
     limitations = [
         "Wingspan is not published by the ingested sources (null).",
         f"Shot-distance profile covers {cov.get('rim_share', {}).get('seasons', 0)} of {len(season_stats)} regular seasons.",
-        "Playoff round labels (conference finals / Finals) are inferred from game-log opponent sequences; Finals are confirmed against the league champions list.",
+        ("Playoff round labels come from the source's playoff-series table." if any(g.get("round_confidence") == "labeled" for g in ds.get("game_logs", []))
+         else "Playoff round labels (conference finals / Finals) are inferred from game-log opponent sequences; Finals are confirmed against the league champions list."),
         "'Close games' are full-game box scores of games decided by <= 3 points, not late-game possessions.",
     ]
+    for note in ds.get("collection_notes", []):
+        limitations.append(f"Collection note: {note}. Single-game regular-season data is unavailable; per-season and playoff game data are used instead.")
     if insuff:
         limitations.append("Archetypes not testable with stored data: " + ", ".join(insuff) + ".")
     if not ds.get("clutch"):
