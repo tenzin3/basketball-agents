@@ -10,3 +10,10 @@ frontend/next-env.d.ts
 tests/fixtures/html/
 
 .hoopcouncil_bundle.tgz
+*.egg-info/
+data/processed/
+data/derived/
+data/reports/
+data/documents/
+career_context_cache/*.json
+career_context_cache/*.txt
