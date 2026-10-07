@@ -213,9 +213,9 @@ def coverage_report(ds: dict, derived: dict | None = None) -> dict:
                       {"status": status(len(gl_have), len(reg)), "detail": f"{len(gl_have)}/{len(reg)} regular seasons"}),
         "Shot profile": {"status": status(len(shot_have), len(reg)) if shot_have else ("N/A" if not shot_eligible else "MISSING"),
                          "detail": f"{len(shot_have)}/{len(reg)} seasons (source shot tracking starts 1996-97)"},
-        "Play-type data": {"status": status(len(pt_have), len(reg)) if pt_have else "MISSING",
+        "Play-type data": {"status": status(len(pt_have), len(pt_eligible)) if pt_have else ("N/A" if not pt_eligible else "MISSING"),
                            "detail": f"{len(pt_have)}/{len(pt_eligible)} eligible seasons (Synergy starts 2015-16)"},
-        "Clutch data": {"status": status(len(cl_have), len(reg)) if cl_have else "MISSING",
+        "Clutch data": {"status": status(len(cl_have), len(cl_eligible)) if cl_have else ("N/A" if not cl_eligible else "MISSING"),
                         "detail": f"{len(cl_have)}/{len(cl_eligible)} eligible seasons (NBA.com clutch starts 1996-97)"},
     }
     return rep

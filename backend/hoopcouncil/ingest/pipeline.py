@@ -34,6 +34,7 @@ def ingest(players: list | None = None, include_gamelogs: bool = True, with_nba_
     log.info("collecting league-wide pages (champions, awards, league averages)")
     league = bref.collect_league()
     written = []
+    _nba_state: dict = {}
     for cfg in cfgs:
         log.info("collecting %s", cfg.full_name)
         try:
@@ -43,7 +44,7 @@ def ingest(players: list | None = None, include_gamelogs: bool = True, with_nba_
             raise
         nba_frag = None
         if with_nba_stats:
-            nba_frag = _collect_nba(cfg, frag, offline, refresh)
+            nba_frag = _collect_nba(cfg, frag, offline, refresh, _nba_state)
         ds = assemble(cfg, frag, league, nba_frag)
         out = config.PROCESSED_DIR / f"{cfg.slug}.json"
         _write_json(out, ds)
@@ -53,14 +54,24 @@ def ingest(players: list | None = None, include_gamelogs: bool = True, with_nba_
     return written
 
 
-def _collect_nba(cfg: PlayerConfig, frag: dict, offline: bool, refresh: bool) -> dict:
+def _collect_nba(cfg: PlayerConfig, frag: dict, offline: bool, refresh: bool, state: dict | None = None) -> dict:
     from .sources.nba_stats import HEADERS, NBAStatsSource
 
+    state = state if state is not None else {}
+    if "src" in state:
+        src = state["src"]
+        years = sorted({int(s["season"][:4]) + 1 for s in frag["seasons"] if s["stat_type"] == "regular_season"})
+        try:
+            return src.collect_player(cfg, {"player_end_years": {cfg.slug: years}})
+        except RateLimitedError as e:
+            log.error("NBA stats rate limited: %s", e)
+            return {"errors": [str(e)]}
     fetcher = PoliteFetcher(min_interval_s=config.NBA_STATS_MIN_INTERVAL_S, offline=offline, refresh=refresh,
                             user_agent="Mozilla/5.0 (HoopCouncil research; rate limited)", extra_headers=HEADERS,
-                            respect_robots=False)
+                            respect_robots=False, timeout_s=15)
     years = sorted({int(s["season"][:4]) + 1 for s in frag["seasons"] if s["stat_type"] == "regular_season"})
     src = NBAStatsSource(fetcher)
+    state["src"] = src
     try:
         return src.collect_player(cfg, {"player_end_years": {cfg.slug: years}})
     except RateLimitedError as e:

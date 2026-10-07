@@ -53,10 +53,27 @@ class NBAStatsSource(DataSource):
     homepage = "https://www.nba.com/stats"
     terms_note = "Optional; review NBA.com Terms of Use. Public JSON endpoints, rate limited."
 
+    MAX_CONSECUTIVE_FAILURES = 2
+
     def _get(self, endpoint: str, params: dict):
+        """Fetch one endpoint. After repeated failures (timeouts/blocks) the endpoint is skipped for
+        the rest of the run instead of waiting on every request; the gap is reported, not filled."""
         import json
 
-        r = self.fetcher.get(f"{STATS}/{endpoint}", params=params)
+        if not hasattr(self, "_fails"):
+            self._fails, self._dead = {}, set()
+        if endpoint in self._dead:
+            return None, None
+        try:
+            r = self.fetcher.get(f"{STATS}/{endpoint}", params=params)
+        except Exception:
+            self._fails[endpoint] = self._fails.get(endpoint, 0) + 1
+            if self._fails[endpoint] >= self.MAX_CONSECUTIVE_FAILURES:
+                self._dead.add(endpoint)
+                log.warning("NBA.com endpoint %s failed %d times in a row; skipping it for the rest of this run",
+                            endpoint, self._fails[endpoint])
+            raise
+        self._fails[endpoint] = 0
         if not r:
             return None, None
         try:
