@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { SimMessage } from "@/lib/types";
-import { PLAYER_COLORS, SHORT, txtList } from "@/lib/format";
+import { FULL_NAME, PLAYER_COLORS, SHORT, txtList } from "@/lib/format";
 
 export default function DataDrawer({ msg, onClose }: { msg: SimMessage | null; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -28,15 +28,17 @@ export default function DataDrawer({ msg, onClose }: { msg: SimMessage | null; o
         <div className="flex h-full flex-col">
           <div className="flex items-start justify-between gap-4 border-b border-rule p-5" style={{ borderTop: `5px solid ${color}` }}>
             <div>
-              <h2 className="font-display text-3xl font-bold">Why did the {SHORT[msg.slug]} agent say this?</h2>
-              <p className="mt-1 text-sm text-ink-soft">Round {msg.round}. Data the agent was given, and what it cited.</p>
+              <h2 className="font-display text-3xl font-bold">Why did {SHORT[msg.slug]} say this?</h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Round {msg.round}. The {FULL_NAME[msg.slug]} data this reply was built from, and the numbers it cited.
+              </p>
             </div>
             <button type="button" onClick={onClose} className="rounded border border-rule px-2 py-1 text-sm">Close</button>
           </div>
           <div className="flex-1 space-y-6 overflow-y-auto p-5 text-sm">
             {support.length > 0 && (
               <section>
-                <h3 className="font-display text-xl font-semibold">Cited by the agent</h3>
+                <h3 className="font-display text-xl font-semibold">Numbers cited</h3>
                 <ul className="mt-2 space-y-1.5">
                   {support.map((s, i) => {
                     const fact = /^\s*fact/i.test(s);

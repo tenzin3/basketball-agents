@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { API_URL, api } from "@/lib/api";
-import { PLAYER_COLORS, SHORT } from "@/lib/format";
+import { FULL_NAME, PLAYER_COLORS, SHORT } from "@/lib/format";
 import type { PromptPlayer, PromptsResponse } from "@/lib/types";
 
 type TabKey = "player_system" | "grounding_rules" | "round1" | "round2" | "round3" | "coach_system" | "coach_user";
@@ -19,11 +19,12 @@ const TABS: { key: TabKey; label: string; who: string; when: string }[] = [
 
 /** What fills each {placeholder} in the templates. */
 const FILLS: Record<string, string> = {
-  name: "the player this agent represents (also used inside the grounding rules)",
+  name: "the player this participant speaks for (also used inside the grounding rules)",
   focus: "that agent's focus lenses (different for each player, listed below)",
   context: "that player's career context package: only its own data, never a teammate's",
-  teammates: "the other four agents' names (no stats about them)",
-  rules: "the grounding rules: identical for every agent apart from its own name",
+  teammates: "the other four players' names (no stats about them)",
+  rules: "the grounding rules: identical for every player apart from the name",
+  explain: "how to explain numbers to a fan who hasn't seen the data (stat, value, span, comparison)",
   question: "your chat message, exactly as you typed it",
   lineup: "the five on the floor, in case the answer needs a play",
   proposals: "all five Round 1 answers, trimmed to the play, options, reasoning, data and risks",
@@ -59,7 +60,7 @@ function AgentCard({ p, open, onToggle }: { p: PromptPlayer; open: boolean; onTo
   const color = PLAYER_COLORS[p.slug];
   return (
     <li className="flex flex-col rounded-md border border-rule bg-sheet p-4" style={{ borderTop: `5px solid ${color}` }}>
-      <h4 className="font-display text-2xl font-bold" style={{ color }}>{SHORT[p.slug]} agent</h4>
+      <h4 className="font-display text-2xl font-bold" style={{ color }}>{FULL_NAME[p.slug]}</h4>
       <p className="text-xs text-ink-soft">{p.agent_name}, default slot {p.lineup_slot}</p>
 
       <h5 className="mt-3 text-sm font-semibold">Focus lenses</h5>
@@ -205,7 +206,7 @@ export default function PromptExplorer() {
           return (
             <div id="agent-context" className="mt-4">
               <h3 className="font-display text-xl font-bold" style={{ color: PLAYER_COLORS[sel.slug] }}>
-                What the {SHORT[sel.slug]} agent reads in {"{context}"}: career summary, layer 1 of 3
+                What {SHORT[sel.slug]}&apos;s replies are built from ({"{context}"}): career summary, layer 1 of 3
               </h3>
               <p className="mt-1 text-sm text-ink-soft">
                 Generated from the database. Season tables (layer 2) and the retrieved detail listed above come after this.

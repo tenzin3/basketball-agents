@@ -99,7 +99,11 @@ def to_text(v) -> str:
             if isinstance(v.get(k), str) and len(v) <= 2:
                 other = [str(x) for kk, x in v.items() if kk != k and x not in (None, "")]
                 return v[k] + (f" ({other[0]})" if other else "")
-        return "; ".join(f"{k}: {to_text(x)}" for k, x in v.items() if x not in (None, "", [], {}))
+        # a full sentence inside the object already says it all (e.g. {"fact": "LeBron's peak PER is 29.3", "value": 29.3})
+        sentences = [x for x in v.values() if isinstance(x, str) and len(x.split()) >= 4]
+        if sentences:
+            return max(sentences, key=len)
+        return ", ".join(to_text(x) for x in v.values() if x not in (None, "", [], {}))
     if isinstance(v, (list, tuple)):
         return "; ".join(to_text(x) for x in v)
     return str(v)

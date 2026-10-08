@@ -270,15 +270,28 @@ class AgentTests(unittest.TestCase):
         self.assertIn("comparison / greatness", res["query"]["intents"])
 
     def test_prompts_format_without_leftover_placeholders(self):
+        import re
+
         from hoopcouncil.agents import prompts as P
 
         rules = P.GROUNDING_RULES.format(name="X")
-        sysp = P.PLAYER_SYSTEM.format(name="X", focus="a", context="C", teammates="T", rules=rules)
-        self.assertNotIn("{name}", sysp)
-        for t in (P.ROUND1_USER.format(question="q", lineup="l"), P.ROUND2_USER.format(question="q", proposals="p"),
-                  P.ROUND3_USER.format(question="q", proposals="p", debate="d"),
-                  P.COACH_USER.format(question="q", round1="a", round2="b", round3="c", vocab="v")):
-            self.assertIn('"', t)
+        texts = [
+            P.PLAYER_SYSTEM.format(name="X", focus="a", context="C", teammates="T", explain=P.EXPLAIN_NUMBERS, rules=rules),
+            P.ROUND1_USER.format(question="q", lineup="l"),
+            P.ROUND2_USER.format(question="q", proposals="p", name="X"),
+            P.ROUND3_USER.format(question="q", proposals="p", debate="d", name="X"),
+            P.COACH_SYSTEM.format(contexts="c", explain=P.EXPLAIN_NUMBERS, rules=P.COACH_RULES),
+            P.COACH_USER.format(question="q", round1="a", round2="b", round3="c", vocab="v"),
+        ]
+        for t in texts:
+            self.assertIsNone(re.search(r"\{[a-z_]+\}", t), t[:200])
+
+    def test_peers_do_not_see_confidence(self):
+        from hoopcouncil.agents.agents import _slim_r1
+
+        r = {"player": "A", "message": "m", "confidence": 90}
+        self.assertNotIn("confidence", _slim_r1(r))
+        self.assertIn("confidence", _slim_r1(r, coach=True))
 
     def test_missing_data_is_an_error(self):
         from hoopcouncil.orchestrator import MissingDataError, run_simulation

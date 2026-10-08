@@ -6,24 +6,28 @@ from ..context.retrieval import retrieve
 from ..llm.providers import LLMProvider
 from ..players import PlayerConfig
 from .parsing import clamp_conf, clean_output, extract_json, normalize
-from .prompts import (COACH_RULES, COACH_SYSTEM, COACH_USER, COURT_VOCAB, GROUNDING_RULES, PLAYER_SYSTEM, ROUND1_USER,
-                      ROUND2_USER, ROUND3_USER, compact, lineup_text, question_text)
+from .prompts import (COACH_RULES, COACH_SYSTEM, COACH_USER, COURT_VOCAB, EXPLAIN_NUMBERS, GROUNDING_RULES, PLAYER_SYSTEM,
+                      ROUND1_USER, ROUND2_USER, ROUND3_USER, compact, lineup_text, question_text)
 
 
 def _pick(r: dict, keys: tuple) -> dict:
     return {k: r.get(k) for k in keys if r.get(k) not in (None, "", [])}
 
 
-def _slim_r1(r: dict) -> dict:
-    return _pick(r, ("player", "message", "position", "reasoning", "data_support", "risks", "play", "confidence"))
+# What players see of each other: arguments and numbers, not confidence scores (those only go to the coach).
+def _slim_r1(r: dict, coach: bool = False) -> dict:
+    keys = ("player", "message", "position", "reasoning", "data_support", "risks", "play")
+    return _pick(r, keys + (("confidence",) if coach else ()))
 
 
-def _slim_r2(r: dict) -> dict:
-    return _pick(r, ("player", "message", "evaluations", "revised_position", "changed_position", "confidence"))
+def _slim_r2(r: dict, coach: bool = False) -> dict:
+    keys = ("player", "message", "evaluations", "revised_position", "changed_position")
+    return _pick(r, keys + (("confidence",) if coach else ()))
 
 
-def _slim_r3(r: dict) -> dict:
-    return _pick(r, ("player", "message", "final_answer", "backs", "reason", "confidence"))
+def _slim_r3(r: dict, coach: bool = False) -> dict:
+    keys = ("player", "message", "final_answer", "backs", "reason")
+    return _pick(r, keys + (("confidence",) if coach else ()))
 
 
 class PlayerAgent:
@@ -50,7 +54,8 @@ class PlayerAgent:
 
     def system_prompt(self) -> str:
         return PLAYER_SYSTEM.format(name=self.name, focus=", ".join(self.cfg.focus_areas), context=self.context_text,
-                                    teammates=", ".join(self.teammates), rules=GROUNDING_RULES.format(name=self.name))
+                                    teammates=", ".join(self.teammates), explain=EXPLAIN_NUMBERS,
+                                    rules=GROUNDING_RULES.format(name=self.name))
 
     async def _run(self, rnd: int, user: str, extra_meta: dict | None = None) -> dict:
         meta = {"role": "player", "round": rnd, "player": self.name, "packages": self.all_packages, **(extra_meta or {})}
@@ -65,11 +70,11 @@ class PlayerAgent:
 
     async def debate(self, scenario: dict, round1: list) -> dict:
         props = compact([_slim_r1(r["content"]) for r in round1])
-        return await self._run(2, ROUND2_USER.format(question=question_text(scenario), proposals=props),
+        return await self._run(2, ROUND2_USER.format(question=question_text(scenario), proposals=props, name=self.name),
                                {"round1": [r["content"] for r in round1]})
 
     async def final_vote(self, scenario: dict, round1: list, round2: list) -> dict:
-        return await self._run(3, ROUND3_USER.format(question=question_text(scenario),
+        return await self._run(3, ROUND3_USER.format(question=question_text(scenario), name=self.name,
                                                      proposals=compact([_slim_r1(r["content"]) for r in round1]),
                                                      debate=compact([_slim_r2(r["content"]) for r in round2])))
 
@@ -94,10 +99,11 @@ class CoachAgent:
         return "\n\n".join(parts)
 
     async def decide(self, scenario: dict, round1: list, round2: list, round3: list) -> dict:
-        system = COACH_SYSTEM.format(contexts=self._contexts(), rules=COACH_RULES)
-        user = COACH_USER.format(question=question_text(scenario), round1=compact([_slim_r1(r["content"]) for r in round1]),
-                                 round2=compact([_slim_r2(r["content"]) for r in round2]),
-                                 round3=compact([_slim_r3(r["content"]) for r in round3]), vocab=COURT_VOCAB)
+        system = COACH_SYSTEM.format(contexts=self._contexts(), explain=EXPLAIN_NUMBERS, rules=COACH_RULES)
+        user = COACH_USER.format(question=question_text(scenario),
+                                 round1=compact([_slim_r1(r["content"], coach=True) for r in round1]),
+                                 round2=compact([_slim_r2(r["content"], coach=True) for r in round2]),
+                                 round3=compact([_slim_r3(r["content"], coach=True) for r in round3]), vocab=COURT_VOCAB)
         res = await self.provider.complete(system, user, {"role": "coach", "packages": self.packages,
                                                           "question": scenario.get("question")})
         obj = clean_output(extract_json(res.text))

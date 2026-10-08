@@ -4,7 +4,7 @@ import { useState } from "react";
 import Avatar from "./Avatar";
 import Court from "./Court";
 import type { CoachDecisionT, SimMessage, Simulation } from "@/lib/types";
-import { PLAYER_COLORS, SHORT, slugFor, txt, txtList } from "@/lib/format";
+import { FULL_NAME, PLAYER_COLORS, SHORT, slugFor, txt, txtList } from "@/lib/format";
 
 const ORDER = ["curry", "kobe", "jordan", "durant", "lebron"];
 const ROUND_TITLE: Record<number, string> = {
@@ -15,7 +15,7 @@ const ROUND_TITLE: Record<number, string> = {
 
 function messageText(m: SimMessage): string {
   const c = m.content ?? {};
-  if (c.parse_error) return "This agent's reply couldn't be read. Try asking again.";
+  if (c.parse_error) return "This reply couldn't be read. Try asking again.";
   // new chat fields first, then the earlier (scenario-form) fields so old debates still render
   return txt(c.message || c.huddle_line || c.proposed_play || c.revised_proposal || c.final_vote || "");
 }
@@ -42,7 +42,7 @@ function AgentBubble({ m, onWhy }: { m: SimMessage; onWhy: (m: SimMessage) => vo
       <Avatar slug={m.slug} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-display text-lg font-bold" style={{ color }}>{SHORT[m.slug]} agent</span>
+          <span className="font-display text-lg font-bold" style={{ color }}>{FULL_NAME[m.slug] ?? m.player}</span>
           {typeof c.confidence === "number" && <span className="tabular text-xs text-ink-soft">{c.confidence}% sure</span>}
         </div>
         <div className="mt-1 max-w-[68ch] rounded-2xl rounded-tl-sm border border-rule bg-sheet px-4 py-2.5 leading-relaxed">
@@ -63,16 +63,16 @@ function AgentBubble({ m, onWhy }: { m: SimMessage; onWhy: (m: SimMessage) => vo
                 return (
                   <li key={i} title={txt(e.comment)} className="inline-flex items-center gap-1 rounded-full border border-rule bg-white py-0.5 pl-0.5 pr-2">
                     {s && <Avatar slug={s} size={18} />}
-                    {verb} {s ? SHORT[s] : txt(e.of_player)}
+                    {verb} {s ? FULL_NAME[s] : txt(e.of_player)}
                   </li>
                 );
               })}
-              {c.changed_position && <li className="rounded-full bg-board-2 px-2 py-0.5">changed its answer</li>}
+              {c.changed_position && <li className="rounded-full bg-board-2 px-2 py-0.5">changed answer</li>}
             </ul>
           )}
           {m.round === 3 && backs && (
             <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-rule bg-white py-0.5 pl-0.5 pr-2.5 text-xs">
-              <Avatar slug={backs} size={18} /> backs {backs === m.slug ? "its own answer" : `the ${SHORT[backs]} agent`}
+              <Avatar slug={backs} size={18} /> backs {FULL_NAME[backs]}
             </p>
           )}
         </div>

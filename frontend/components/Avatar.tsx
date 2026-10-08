@@ -1,4 +1,4 @@
-import { PLAYER_COLORS, SHORT } from "@/lib/format";
+import { FULL_NAME, PLAYER_COLORS } from "@/lib/format";
 
 const INITIALS: Record<string, string> = { curry: "SC", kobe: "KB", jordan: "MJ", durant: "KD", lebron: "LJ" };
 
@@ -8,7 +8,7 @@ export default function Avatar({ slug, size = 44, ring = false, title }: {
 }) {
   const isCoach = slug === "coach";
   const bg = isCoach ? "var(--color-ink)" : PLAYER_COLORS[slug] ?? "var(--color-ink-soft)";
-  const label = isCoach ? "Coach" : `${SHORT[slug] ?? slug} agent`;
+  const label = isCoach ? "Coach" : FULL_NAME[slug] ?? slug;
   return (
     <span
       role="img"

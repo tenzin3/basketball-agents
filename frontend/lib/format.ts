@@ -31,6 +31,14 @@ export const SHORT: Record<string, string> = {
   lebron: "LeBron",
 };
 
+export const FULL_NAME: Record<string, string> = {
+  curry: "Stephen Curry",
+  kobe: "Kobe Bryant",
+  jordan: "Michael Jordan",
+  durant: "Kevin Durant",
+  lebron: "LeBron James",
+};
+
 export function slugFor(name?: string | null): string | undefined {
   if (!name) return undefined;
   if (NAME_TO_SLUG[name]) return NAME_TO_SLUG[name];
@@ -49,10 +57,13 @@ export function txt(v: unknown): string {
     for (const k of ["text", "fact", "point", "statement", "description", "detail", "value", "note", "claim"]) {
       if (typeof o[k] === "string" && Object.keys(o).length <= 2) return o[k] as string;
     }
-    return Object.entries(o)
-      .filter(([, x]) => x != null && x !== "")
-      .map(([k, x]) => `${k}: ${txt(x)}`)
-      .join("; ");
+    // a full sentence inside the object already says it all
+    const sentences = Object.values(o).filter((x): x is string => typeof x === "string" && x.split(/\s+/).length >= 4);
+    if (sentences.length) return sentences.reduce((a, b) => (b.length > a.length ? b : a));
+    return Object.values(o)
+      .filter((x) => x != null && x !== "")
+      .map(txt)
+      .join(", ");
   }
   return String(v);
 }

@@ -6,7 +6,7 @@ import Avatar from "@/components/Avatar";
 import ChatExchange from "@/components/ChatExchange";
 import DataDrawer from "@/components/DataDrawer";
 import { API_URL, api } from "@/lib/api";
-import { SHORT } from "@/lib/format";
+import { FULL_NAME } from "@/lib/format";
 import type { SimMessage, Simulation } from "@/lib/types";
 
 const STORAGE_KEY = "hoopcouncil.chat.v1";
@@ -15,8 +15,8 @@ const SUGGESTIONS = [
   "We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?",
   "Who was the best playoff scorer of the five, and why?",
   "Against a team that blitzes every pick-and-roll, who should run the offense?",
-  "If you had to guard prime Kobe for one possession, which of you takes the assignment?",
-  "Which of you would you build a team around for one season, and why?",
+  "If you had to guard prime Kobe for one possession, who takes the assignment?",
+  "Which of the five would you build a team around for one season, and why?",
 ];
 
 function loadIds(): string[] {
@@ -113,8 +113,8 @@ export default function ChatPage() {
           <div>
             <h1 className="font-display text-5xl font-bold">Ask the council</h1>
             <p className="mt-1 max-w-2xl text-ink-soft">
-              Ask any basketball question. Five agents, each built only from one player&apos;s career data, answer,
-              argue it out over three rounds, and the coach gives the final answer.
+              Ask any basketball question. Curry, Kobe, Jordan, Durant and LeBron each answer from their own career
+              numbers, argue it out over three rounds, and the coach gives the final answer.
             </p>
           </div>
           {ids.length > 0 && (
@@ -128,7 +128,7 @@ export default function ChatPage() {
             <li key={s}>
               <Link href={`/players/${s}`} className="group flex items-center gap-2 rounded-full pr-3 hover:bg-board-2">
                 <Avatar slug={s} size={40} />
-                <span className="font-display text-lg font-semibold group-hover:underline">{SHORT[s]}</span>
+                <span className="font-display text-lg font-semibold group-hover:underline">{FULL_NAME[s]}</span>
               </Link>
             </li>
           ))}
