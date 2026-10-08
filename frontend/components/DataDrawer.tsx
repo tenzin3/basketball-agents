@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { SimMessage } from "@/lib/types";
-import { PLAYER_COLORS, SHORT } from "@/lib/format";
+import { PLAYER_COLORS, SHORT, txtList } from "@/lib/format";
 
 export default function DataDrawer({ msg, onClose }: { msg: SimMessage | null; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -14,7 +14,7 @@ export default function DataDrawer({ msg, onClose }: { msg: SimMessage | null; o
   }, [msg]);
 
   const dc = msg?.data_considered ?? {};
-  const support: string[] = Array.isArray(msg?.content?.data_support) ? msg!.content.data_support : [];
+  const support: string[] = txtList(msg?.content?.data_support);
   const color = msg ? PLAYER_COLORS[msg.slug] : undefined;
 
   return (

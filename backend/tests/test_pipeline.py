@@ -207,6 +207,19 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(extract_json('Sure! {"a": {"b": "}"}, } trailing'), {"a": {"b": "}"}})
         self.assertTrue(extract_json("no json")["parse_error"])
 
+    def test_clean_output_flattens_objects(self):
+        from hoopcouncil.agents.parsing import clean_output
+
+        out = clean_output({"key_data_points": [{"fact": "TS 61%", "source": "context"}, {"player": "X", "stat": 1}, "plain"],
+                            "verdict": {"text": "Curry"}, "play": {"play_name": ["a", "b"], "player_roles": {"A": {"role": "screen"}}},
+                            "evaluations": [{"of_player": "Y", "stance": "agree", "comment": {"text": "ok"}}]})
+        self.assertTrue(all(isinstance(x, str) for x in out["key_data_points"]))
+        self.assertEqual(out["key_data_points"][0], "TS 61% (context)")
+        self.assertEqual(out["verdict"], "Curry")
+        self.assertEqual(out["play"]["play_name"], "a; b")
+        self.assertIsInstance(out["play"]["player_roles"]["A"], str)
+        self.assertEqual(out["evaluations"][0]["comment"], "ok")
+
     def test_court_validation(self):
         out = validate_court({"court": {"start_positions": {"A": "top_of_key", "B": "moon"},
                                         "play_sequence": [{"time": 2, "player": "A", "action": "shoot"},

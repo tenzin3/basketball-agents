@@ -37,3 +37,28 @@ export function slugFor(name?: string | null): string | undefined {
   const n = name.toLowerCase();
   return Object.keys(SHORT).find((s) => n.includes(s) || n.includes(SHORT[s].toLowerCase()));
 }
+
+/** Model output should be text, but models sometimes return objects or lists. Render anything as text. */
+export function txt(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(txt).filter(Boolean).join("; ");
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const k of ["text", "fact", "point", "statement", "description", "detail", "value", "note", "claim"]) {
+      if (typeof o[k] === "string" && Object.keys(o).length <= 2) return o[k] as string;
+    }
+    return Object.entries(o)
+      .filter(([, x]) => x != null && x !== "")
+      .map(([k, x]) => `${k}: ${txt(x)}`)
+      .join("; ");
+  }
+  return String(v);
+}
+
+/** A list-ish model field as a list of strings. */
+export function txtList(v: unknown): string[] {
+  if (v == null || v === "") return [];
+  return (Array.isArray(v) ? v : [v]).map(txt).filter(Boolean);
+}

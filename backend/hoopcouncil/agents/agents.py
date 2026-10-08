@@ -5,7 +5,7 @@ from ..context.builder import assemble_agent_context
 from ..context.retrieval import retrieve
 from ..llm.providers import LLMProvider
 from ..players import PlayerConfig
-from .parsing import clamp_conf, extract_json, normalize
+from .parsing import clamp_conf, clean_output, extract_json, normalize
 from .prompts import (COACH_RULES, COACH_SYSTEM, COACH_USER, COURT_VOCAB, GROUNDING_RULES, PLAYER_SYSTEM, ROUND1_USER,
                       ROUND2_USER, ROUND3_USER, compact, lineup_text, question_text)
 
@@ -100,7 +100,7 @@ class CoachAgent:
                                  round3=compact([_slim_r3(r["content"]) for r in round3]), vocab=COURT_VOCAB)
         res = await self.provider.complete(system, user, {"role": "coach", "packages": self.packages,
                                                           "question": scenario.get("question")})
-        obj = extract_json(res.text)
+        obj = clean_output(extract_json(res.text))
         if "confidence" in obj:
             obj["confidence"] = clamp_conf(obj["confidence"])
         obj = validate_court(obj)
