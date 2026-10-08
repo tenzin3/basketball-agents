@@ -144,7 +144,9 @@ class OpenRouterProvider(LLMProvider):
     async def _call(self, model, fallbacks, system, user):
         payload = {"model": model, "temperature": self.temperature, "max_tokens": self.max_tokens,
                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                   "reasoning": {"exclude": True}}
+                   "reasoning": {"exclude": True},
+                   # ask for JSON: openrouter/free then only picks free models that support JSON output
+                   "response_format": {"type": "json_object"}}
         if fallbacks:
             payload["models"] = [model, *fallbacks]
         data = await self._post(self.url, payload, self._headers(), retries=2)
@@ -164,6 +166,15 @@ class OpenRouterProvider(LLMProvider):
             text, used, usage = "", self.model, {}
         if not text.strip() and self.fallbacks:
             text, used, usage = await self._call(self.fallbacks[0], self.fallbacks[1:], system, user)
+        return LLMResult(text, used, int((time.monotonic() - t) * 1000), usage)
+
+    async def retry_backup(self, system, user):
+        """Ask the first paid backup model directly. Used when a free model's reply arrived but was unusable
+        (not JSON, or missing the chat message). Returns None when no backup is configured."""
+        if not self.fallbacks:
+            return None
+        t = time.monotonic()
+        text, used, usage = await self._call(self.fallbacks[0], self.fallbacks[1:], system, user)
         return LLMResult(text, used, int((time.monotonic() - t) * 1000), usage)
 
 

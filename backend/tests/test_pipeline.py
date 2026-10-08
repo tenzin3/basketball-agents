@@ -585,5 +585,30 @@ class SecurityTests(unittest.TestCase):
                 setattr(config, k, v)
 
 
+class BackupRetryTests(unittest.TestCase):
+    def test_unreadable_free_reply_is_retried_on_backup(self):
+        import os
+
+        from hoopcouncil.agents.agents import _retry_on_backup
+        from hoopcouncil.agents.parsing import extract_json
+        from hoopcouncil.llm.providers import LLMResult, make_provider
+
+        os.environ["OPENROUTER_API_KEY"] = "test-key"
+        p = make_provider("openrouter")
+        calls = []
+
+        async def fake_call(model, fallbacks, system, user):
+            calls.append(model)
+            return '{"message": "Curry made 42.6% of his threes."}', model, {}
+        p._call = fake_call
+        bad = LLMResult("sorry, I cannot help", "some/free-model", 5, {})
+        res, obj = asyncio.run(_retry_on_backup(p, "s", "u", bad, extract_json(bad.text), extract_json, "message"))
+        self.assertEqual(calls, ["meta-llama/llama-3.1-8b-instruct"])
+        self.assertIn("42.6", obj["message"])
+        good = LLMResult('{"message": "fine"}', "free", 5, {})
+        res, obj = asyncio.run(_retry_on_backup(p, "s", "u", good, extract_json(good.text), extract_json, "message"))
+        self.assertEqual(len(calls), 1)  # a usable reply is kept as is
+
+
 if __name__ == "__main__":
     unittest.main()

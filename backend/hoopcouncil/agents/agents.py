@@ -10,6 +10,26 @@ from .prompts import (COACH_RULES, COACH_SYSTEM, COACH_USER, COURT_VOCAB, EXPLAI
                       ROUND1_USER, ROUND2_USER, ROUND3_USER, compact, lineup_text, question_text)
 
 
+def _unusable(obj: dict, *keys: str) -> bool:
+    """A reply we can't show: not JSON, or none of the expected text fields filled in."""
+    return bool(obj.get("parse_error")) or not any(str(obj.get(k) or "").strip() for k in keys)
+
+
+async def _retry_on_backup(provider, system: str, user: str, res, obj, parse, *keys):
+    """Free models sometimes return broken or empty JSON. Try once more on the provider's backup model
+    (OpenRouter only); keep the original if the backup isn't better."""
+    if not _unusable(obj, *keys) or not hasattr(provider, "retry_backup"):
+        return res, obj
+    try:
+        res2 = await provider.retry_backup(system, user)
+    except Exception:  # keep the original reply; the debate goes on
+        return res, obj
+    if res2 is None:
+        return res, obj
+    obj2 = parse(res2.text)
+    return (res2, obj2) if not _unusable(obj2, *keys) else (res, obj)
+
+
 def _pick(r: dict, keys: tuple) -> dict:
     return {k: r.get(k) for k in keys if r.get(k) not in (None, "", [])}
 
@@ -59,8 +79,13 @@ class PlayerAgent:
 
     async def _run(self, rnd: int, user: str, extra_meta: dict | None = None) -> dict:
         meta = {"role": "player", "round": rnd, "player": self.name, "packages": self.all_packages, **(extra_meta or {})}
-        res = await self.provider.complete(self.system_prompt(), user, meta)
-        obj = normalize(extract_json(res.text), rnd, self.name)
+        system = self.system_prompt()
+        res = await self.provider.complete(system, user, meta)
+
+        def parse(text):
+            return normalize(extract_json(text), rnd, self.name)
+        obj = parse(res.text)
+        res, obj = await _retry_on_backup(self.provider, system, user, res, obj, parse, "message")
         return {"player": self.name, "slug": self.cfg.slug, "round": rnd, "content": obj, "raw_text": res.text,
                 "model": res.model, "latency_ms": res.latency_ms, "data_considered": self.data_considered}
 
@@ -107,6 +132,8 @@ class CoachAgent:
         res = await self.provider.complete(system, user, {"role": "coach", "packages": self.packages,
                                                           "question": scenario.get("question")})
         obj = clean_output(extract_json(res.text))
+        res, obj = await _retry_on_backup(self.provider, system, user, res, obj,
+                                          lambda text: clean_output(extract_json(text)), "verdict", "answer")
         if "confidence" in obj:
             obj["confidence"] = clamp_conf(obj["confidence"])
         obj = validate_court(obj)

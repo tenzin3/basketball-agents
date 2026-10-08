@@ -17,7 +17,9 @@ function messageText(m: SimMessage): string {
   const c = m.content ?? {};
   if (c.parse_error) return "This reply couldn't be read. Try asking again.";
   // new chat fields first, then the earlier (scenario-form) fields so old debates still render
-  return txt(c.message || c.huddle_line || c.proposed_play || c.revised_proposal || c.final_vote || "");
+  const text = txt(c.message || c.huddle_line || c.proposed_play || c.revised_proposal || c.final_vote || "")
+    || txt(c.position || c.revised_position || c.final_answer || "");
+  return text || "This reply came back empty. Try asking again.";
 }
 
 function Detail({ k, v }: { k: string; v: any }) {
@@ -125,6 +127,9 @@ function CoachAnswer({ d, model }: { d: CoachDecisionT; model?: string }) {
     secondary_option: d.secondary_option, third_option: d.third_option, counter: d.counter, player_roles: d.player_roles,
     off_ball_actions: d.off_ball_actions } : null);
   const court = d.court && Array.isArray(d.court.play_sequence) && d.court.play_sequence.length > 0 ? d.court : null;
+  if (!txt(d.verdict) && !txt(d.answer) && !play) {
+    return <p className="mt-1 text-sm">The coach&apos;s answer came back empty. Try asking again.</p>;
+  }
   return (
     <div className="space-y-5">
       <div>

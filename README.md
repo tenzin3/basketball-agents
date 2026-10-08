@@ -256,5 +256,5 @@ frontend/        the website
 docs/            data sources, best-season formula, play-style rules
 ```
 
-`cd backend && python -m pytest` runs 43 tests on synthetic data (no real statistics), covering the parsers, data
+`cd backend && python -m pytest` runs 44 tests on synthetic data (no real statistics), covering the parsers, data
 checks, fact sheets, prompts, a full mock debate, the round-by-round mode and the safety limits.
