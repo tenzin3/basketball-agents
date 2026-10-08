@@ -2,7 +2,7 @@ PY ?= python3
 VENV = backend/.venv
 BIN = $(VENV)/bin
 
-.PHONY: setup db pipeline test api web simulate report
+.PHONY: setup db pipeline test api web dev simulate report
 
 setup:            ## create venv + install backend and frontend deps
 	$(PY) -m venv $(VENV)
@@ -21,6 +21,9 @@ report:           ## print data-quality reports
 
 test:
 	cd backend && ../$(BIN)/python -m pytest -q
+
+dev:              ## database + (Ollama) + API + website in one terminal; Ctrl-C stops all
+	@./scripts/dev.sh
 
 api:
 	cd backend && ../$(BIN)/hoop serve --reload

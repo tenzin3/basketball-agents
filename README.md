@@ -49,7 +49,18 @@ cd backend && ../backend/.venv/bin/hoop pipeline --with-nba-stats && cd ..
 
 ### 2. Every time you want to use it
 
-Open three terminal tabs in the project folder. Add a fourth if you use a local model.
+One command starts everything in a single terminal:
+
+```bash
+make dev
+```
+
+It starts PostgreSQL in Docker (and waits until it accepts connections), starts Ollama if `.env` uses the `local`
+provider and Ollama isn't already running, then runs the API and the website. Each output line is tagged `[api]`,
+`[web]` or `[ollama]`. Open **http://localhost:3000** once `[web]` prints `Ready`. Ctrl-C stops everything except
+the database, which keeps running in Docker.
+
+If you prefer separate tabs (handy for reading one log at a time), run the pieces yourself:
 
 | Tab | Command | Wait for |
 |---|---|---|
@@ -99,7 +110,7 @@ restart `make api`.
 
 ### 4. Stopping
 
-Press Ctrl-C in the API, website and Ollama tabs. To stop the database, run `docker compose stop db`. Your data stays in
+Press Ctrl-C in the `make dev` terminal (or in each tab). To stop the database, run `docker compose stop db`. Your data stays in
 the Docker volume and `data/`.
 
 ### Troubleshooting
