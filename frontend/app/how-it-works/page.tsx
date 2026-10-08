@@ -38,7 +38,7 @@ const FAQ = [
   },
   {
     q: "Can the AI make up stats?",
-    a: "It's told not to, and it's only given numbers from the checked database. Each number it uses is marked as either a fact from the data or a basketball opinion based on it. Smaller local models follow the rules less reliably, so use \"Why did … say this?\" to check any claim.",
+    a: "It's told not to, and it's only given numbers from the checked database. Each number it uses is marked as either a fact from the data or a basketball opinion based on it. Smaller free models follow the rules less reliably, so use \"Why did … say this?\" to check any claim.",
   },
   {
     q: "Why does each player give a different answer?",
@@ -54,7 +54,11 @@ const FAQ = [
   },
   {
     q: "How long does a question take, and what does it cost?",
-    a: "Each question makes 16 AI calls: 5 players × 3 rounds, plus the Coach. With a hosted model that's usually a minute or two and costs a little per question. A free local model runs on your own computer but takes several minutes and gives rougher answers.",
+    a: "Each question makes 16 AI calls: 5 players × 3 rounds, plus the Coach, run one round at a time. The AI comes from OpenRouter, which tries free models first and falls back to a cheap paid model (about a cent per question) when no free one answers. Most questions take a minute or two; free models are sometimes slower when they're busy.",
+  },
+  {
+    q: "Does the coach really draw the play?",
+    a: "Yes, for questions about a play, a last shot or an action on the court. The coach returns step-by-step instructions (who screens, cuts, passes and shoots, and where), the site checks them, and the court diagram animates the valid steps. For comparisons or career questions there's no play, so no court is shown.",
   },
   {
     q: "What can't the data tell us?",
