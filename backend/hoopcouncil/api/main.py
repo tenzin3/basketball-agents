@@ -6,9 +6,14 @@ GET  /players/{player}/career       seasons, playoffs, aggregates, finals, shot 
 GET  /players/{player}/achievements structured awards
 GET  /players/{player}/context      cached Career Context Package (inspection)
 GET  /players/{player}/quality      data-quality report
-POST /simulations                   start a debate (runs in the background)
+GET  /config                        what the website needs to know (run mode, model choices, access code)
+POST /simulations                   start a debate
+POST /simulations/{id}/step         run the next round (step mode, used on Vercel)
 GET  /simulations/{simulation_id}   poll status / transcript / coach decision
 GET  /simulations                   recent simulations
+
+Every route is also served under /api (e.g. /api/players), which is how the website reaches the backend
+when both run on one Vercel domain.
 """
 from __future__ import annotations
 
@@ -16,14 +21,16 @@ import asyncio
 import logging
 import os
 
-from fastapi import FastAPI, HTTPException
+import hmac
+
+from fastapi import APIRouter, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .. import config
 from ..context.builder import achievements_summary
 from ..context.cache import load_package
 from ..derive.aggregates import season_lines
-from ..orchestrator import DEFAULT_LINEUP, MissingDataError, run_simulation
+from ..orchestrator import DEFAULT_LINEUP, MissingDataError, public_error, run_simulation, run_stage
 from ..players import DISPLAY_ORDER, PLAYERS, get_player
 from ..repository import get_repository
 from .schemas import SimulationRequest
@@ -32,6 +39,8 @@ log = logging.getLogger(__name__)
 app = FastAPI(title="HoopCouncil API", version="0.1.0",
               description="AI simulation based on player statistics and career tendencies.")
 app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+router = APIRouter()
+PROVIDERS = ["openrouter", "anthropic", "openai", "gemini", "local", "mock"]
 
 DISCLAIMER = "AI simulation based on player statistics and career tendencies."
 _tasks: set = set()
@@ -72,17 +81,42 @@ def _card(slug: str) -> dict:
             "peak_seasons": [p["season"] for p in pkg.get("peak_seasons", [])]}
 
 
-@app.get("/health")
+@router.get("/health")
 def health():
-    return {"ok": True, "store": os.environ.get("HOOP_STORE", "db"), "llm_provider": config.LLM_PROVIDER}
+    return {"ok": True, "store": os.environ.get("HOOP_STORE", "db"), "llm_provider": config.LLM_PROVIDER,
+            "run_mode": config.RUN_MODE}
 
 
-@app.get("/players")
+def _allowed_providers() -> list:
+    """HOOP_ALLOWED_PROVIDERS if set. Otherwise: locally everything; when hosted, only providers with a key set."""
+    if config.ALLOWED_PROVIDERS:
+        return [p for p in PROVIDERS if p in config.ALLOWED_PROVIDERS]
+    if not os.environ.get("VERCEL"):
+        return list(PROVIDERS)
+    keys = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY",
+            "gemini": "GEMINI_API_KEY"}
+    return [p for p, k in keys.items() if os.environ.get(k)] or [config.LLM_PROVIDER]
+
+
+@router.get("/config")
+def site_config():
+    """What the website needs before asking: how debates run, which models can be picked, whether a code is needed."""
+    return {"run_mode": config.RUN_MODE, "default_provider": config.LLM_PROVIDER, "providers": _allowed_providers(),
+            "access_code_required": bool(config.ACCESS_CODE), "daily_limit": config.DAILY_LIMIT or None}
+
+
+async def _check_access(code: str | None) -> None:
+    if config.ACCESS_CODE and not hmac.compare_digest((code or "").strip().encode(), config.ACCESS_CODE.encode()):
+        await asyncio.sleep(1)  # slows down guessing
+        raise HTTPException(401, "This council needs an access code. Ask the site owner for it.")
+
+
+@router.get("/players")
 def players():
     return {"disclaimer": DISCLAIMER, "lineup": DEFAULT_LINEUP, "players": [_card(s) for s in DISPLAY_ORDER]}
 
 
-@app.get("/players/{player}")
+@router.get("/players/{player}")
 def player_profile(player: str):
     cfg = _resolve(player)
     pkg = load_package(cfg.slug)
@@ -97,7 +131,7 @@ def player_profile(player: str):
             "data_limitations": pkg["data_limitations"], "built_at": pkg.get("built_at")}
 
 
-@app.get("/players/{player}/career")
+@router.get("/players/{player}/career")
 def player_career(player: str):
     cfg = _resolve(player)
     repo = get_repository()
@@ -119,7 +153,7 @@ def player_career(player: str):
             "peak_scores": (derived or {}).get("peak_scores"), "dnp_seasons": ds.get("dnp_seasons")}
 
 
-@app.get("/players/{player}/achievements")
+@router.get("/players/{player}/achievements")
 def player_achievements(player: str):
     cfg = _resolve(player)
     ds = get_repository().load_dataset(cfg.slug)
@@ -128,7 +162,7 @@ def player_achievements(player: str):
     return {"player": cfg.full_name, "summary": achievements_summary(ds["achievements"]), "achievements": ds["achievements"]}
 
 
-@app.get("/players/{player}/context")
+@router.get("/players/{player}/context")
 def player_context(player: str):
     cfg = _resolve(player)
     pkg = load_package(cfg.slug)
@@ -137,7 +171,7 @@ def player_context(player: str):
     return pkg
 
 
-@app.get("/players/{player}/quality")
+@router.get("/players/{player}/quality")
 def player_quality(player: str):
     cfg = _resolve(player)
     rep = get_repository().load_quality(cfg.slug)
@@ -149,7 +183,7 @@ def player_quality(player: str):
 DEFAULT_SAMPLE_QUESTION = "We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?"
 
 
-@app.get("/prompts")
+@router.get("/prompts")
 def prompts(question: str = DEFAULT_SAMPLE_QUESTION):
     """The exact prompt templates every agent receives, plus how each agent's inputs differ:
     its own context package, its focus lenses, and what retrieval picks for a sample question."""
@@ -201,39 +235,81 @@ def prompts(question: str = DEFAULT_SAMPLE_QUESTION):
     }
 
 
-@app.post("/simulations", status_code=202)
-async def create_simulation(req: SimulationRequest):
+@router.post("/simulations", status_code=202)
+async def create_simulation(req: SimulationRequest, x_access_code: str | None = Header(None)):
+    await _check_access(x_access_code)
+    provider = req.provider or None
+    allowed = _allowed_providers()
+    for p in (provider, req.coach_provider):
+        if p and p not in allowed:
+            raise HTTPException(400, f"The model '{p}' isn't available here. Choose one of: {', '.join(allowed)}.")
+    if not provider and config.LLM_PROVIDER not in allowed:
+        provider = allowed[0]
+    if (req.player_model or req.coach_model) and not config.ALLOW_MODEL_OVERRIDE:
+        raise HTTPException(400, "Choosing specific model names is turned off on this server.")
     store = _store()
+    if config.DAILY_LIMIT and store.count_since(24) >= config.DAILY_LIMIT:
+        raise HTTPException(429, "The council has answered its limit of questions for today. Please try again tomorrow.")
     scenario = req.scenario.model_dump(exclude_none=True)
     missing = [s for s in PLAYERS if load_package(s) is None]
     if missing:
         raise HTTPException(409, f"No career data for: {', '.join(missing)}. Run the data pipeline first.")
-    sim_id = store.create(scenario, {"provider": req.provider, "player_model": req.player_model,
-                                     "coach_provider": req.coach_provider, "coach_model": req.coach_model})
+    sim_id = store.create(scenario, {"provider": provider, "player_model": req.player_model,
+                                     "coach_provider": req.coach_provider or provider, "coach_model": req.coach_model})
+    if config.RUN_MODE == "steps":
+        # The browser calls POST /simulations/{id}/step once per round (work can't continue after a response here).
+        return {"id": sim_id, "status": "queued", "run_mode": "steps"}
 
     async def runner():
         try:
-            await run_simulation(scenario, store=store, sim_id=sim_id, provider=req.provider, player_model=req.player_model,
-                                 coach_provider=req.coach_provider, coach_model=req.coach_model)
+            await run_simulation(scenario, store=store, sim_id=sim_id, provider=provider, player_model=req.player_model,
+                                 coach_provider=req.coach_provider or provider, coach_model=req.coach_model)
         except MissingDataError as e:
-            store.set_status(sim_id, "failed", str(e))
+            store.set_status(sim_id, "failed", public_error(e))
         except Exception as e:  # already recorded by the orchestrator, keep the task quiet
             log.warning("simulation %s failed: %s", sim_id, e)
 
     t = asyncio.create_task(runner())
     _tasks.add(t)
     t.add_done_callback(_tasks.discard)
-    return {"id": sim_id, "status": "queued"}
+    return {"id": sim_id, "status": "queued", "run_mode": "background"}
 
 
-@app.get("/simulations")
-def list_simulations(limit: int = 20):
-    return {"simulations": _store().list(limit)}
+@router.post("/simulations/{simulation_id}/step")
+async def step_simulation(simulation_id: str, x_access_code: str | None = Header(None)):
+    """Run the next stage of a debate (round 1, 2, 3 or the coach) and return the updated debate.
+    If another request is already running that stage, returns straight away; the caller just polls again."""
+    await _check_access(x_access_code)
+    store = _store()
+    if store.get(simulation_id) is None:
+        raise HTTPException(404, "simulation not found")
+    try:
+        ran = await run_stage(store, simulation_id)
+    except Exception as e:  # recorded as status=failed on the simulation
+        log.warning("simulation %s step failed: %s", simulation_id, e)
+        ran = None
+    return {**store.get(simulation_id), "ran_stage": ran, "run_mode": config.RUN_MODE, "disclaimer": DISCLAIMER}
 
 
-@app.get("/simulations/{simulation_id}")
+@router.get("/simulations")
+async def list_simulations(limit: int = 20, x_access_code: str | None = Header(None)):
+    """Recent questions from everyone. Off when hosted, so visitors can't read each other's questions;
+    a single debate is still reachable by its unguessable id."""
+    if config.HOSTED:
+        raise HTTPException(404, "Not available on the hosted site.")
+    await _check_access(x_access_code)
+    return {"simulations": _store().list(max(1, min(limit, 100)))}
+
+
+@router.get("/simulations/{simulation_id}")
 def get_simulation(simulation_id: str):
     sim = _store().get(simulation_id)
     if sim is None:
         raise HTTPException(404, "simulation not found")
-    return {**sim, "disclaimer": DISCLAIMER}
+    return {**sim, "run_mode": config.RUN_MODE, "disclaimer": DISCLAIMER}
+
+
+# Serve every route both at the root (local: http://localhost:8000/players) and under /api
+# (Vercel: the website and backend share one domain, and the backend receives /api/players).
+app.include_router(router)
+app.include_router(router, prefix="/api")

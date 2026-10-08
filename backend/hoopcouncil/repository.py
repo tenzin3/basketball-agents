@@ -36,6 +36,13 @@ class Repository:
     def save_documents(self, slug: str, docs: list) -> None:
         pass
 
+    def load_package(self, slug: str) -> dict | None:
+        """The built career context package, if the repository stores one (the file cache is checked first)."""
+        return None
+
+    def save_package(self, slug: str, package: dict) -> None:
+        pass
+
 
 class FileRepository(Repository):
     def __init__(self, base: Path | None = None):
@@ -225,6 +232,32 @@ class SQLRepository(Repository):
             for d in docs:
                 s.add(m.CareerDocument(player_id=p.id, doc_key=d["doc_key"], title=d["title"], topics=d["topics"],
                                        season=d.get("season"), text=d["text"], embedding=d.get("embedding")))
+
+
+    def load_package(self, slug):
+        from .db import models as m
+
+        try:
+            with self._session() as s:
+                row = s.get(m.ContextPackage, slug)
+                return row.package if row else None
+        except Exception:  # older local database without the table
+            return None
+
+    def save_package(self, slug, package):
+        import json as _json
+
+        from .db import models as m
+        from .db.session import ensure_runtime_tables
+
+        ensure_runtime_tables()
+        package = _json.loads(_json.dumps(package, default=str))  # dates etc. -> JSON-safe
+        with self._session() as s:
+            row = s.get(m.ContextPackage, slug)
+            if row:
+                row.package = package
+            else:
+                s.add(m.ContextPackage(slug=slug, package=package))
 
 
 @lru_cache(maxsize=1)

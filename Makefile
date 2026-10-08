@@ -2,7 +2,7 @@ PY ?= python3
 VENV = backend/.venv
 BIN = $(VENV)/bin
 
-.PHONY: setup db pipeline test api web dev simulate report
+.PHONY: setup db pipeline test api web dev simulate report copy-db
 
 setup:            ## create venv + install backend and frontend deps
 	$(PY) -m venv $(VENV)
@@ -33,3 +33,7 @@ web:
 
 simulate:
 	cd backend && ../$(BIN)/python simulate.py
+
+copy-db:          ## copy your local database to the hosted one (Neon on Vercel): make copy-db TO="postgresql://..."
+	@test -n "$(TO)" || (echo 'Usage: make copy-db TO="postgresql://user:pass@host/db?sslmode=require"' && exit 1)
+	cd backend && ../$(BIN)/hoop copy-db "$(TO)"

@@ -5,11 +5,15 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import ChatExchange from "@/components/ChatExchange";
 import DataDrawer from "@/components/DataDrawer";
-import { API_URL, api } from "@/lib/api";
+import { API_URL, advance, api, getAccessCode, isRunning, setAccessCode } from "@/lib/api";
 import { FULL_NAME } from "@/lib/format";
-import type { SimMessage, Simulation } from "@/lib/types";
+import type { SimMessage, Simulation, SiteConfig } from "@/lib/types";
 
 const STORAGE_KEY = "hoopcouncil.chat.v1";
+const MODEL_LABELS: Record<string, string> = {
+  openrouter: "OpenRouter", anthropic: "Anthropic", openai: "OpenAI", gemini: "Gemini", local: "Local model (Ollama)",
+  mock: "Mock (offline test)",
+};
 const ORDER = ["curry", "kobe", "jordan", "durant", "lebron"];
 const SUGGESTIONS = [
   "We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?",
@@ -41,12 +45,18 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [why, setWhy] = useState<SimMessage | null>(null);
+  const [site, setSite] = useState<SiteConfig | null>(null);
+  const [code, setCode] = useState("");
+  const [tick, setTick] = useState(0);
+  const inFlight = useRef<Set<string>>(new Set());
   const bottom = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
-  // restore this browser's chat
+  // restore this browser's chat, and ask the server how it's set up (models, access code, run mode)
   useEffect(() => {
     setIds(loadIds());
+    setCode(getAccessCode());
+    api.config().then(setSite).catch(() => {});
   }, []);
 
   const refresh = useCallback(async (id: string) => {
@@ -64,12 +74,27 @@ export default function ChatPage() {
     ids.forEach((id) => { if (!sims[id]) refresh(id); });
   }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep running discussions moving. In step mode (hosted on Vercel) each call runs the next round on the server;
+  // otherwise it just re-reads progress. One call per discussion at a time.
   useEffect(() => {
-    const running = ids.filter((id) => sims[id] && !["complete", "failed"].includes(sims[id].status));
-    if (!running.length) return;
-    const t = setTimeout(() => running.forEach(refresh), 1500);
-    return () => clearTimeout(t);
-  }, [ids, sims, refresh]);
+    for (const id of ids) {
+      const s = sims[id];
+      if (!isRunning(s) || inFlight.current.has(id)) continue;
+      inFlight.current.add(id);
+      (async () => {
+        let wait = 2500;
+        try {
+          const r = await advance(s);
+          wait = r.wait;
+          setSims((x) => ({ ...x, [id]: r.sim }));
+        } catch (e: any) {
+          if (e?.status === 401) { setError(e.message); wait = 10000; }
+        } finally {
+          setTimeout(() => { inFlight.current.delete(id); setTick((t) => t + 1); }, wait);
+        }
+      })();
+    }
+  }, [ids, sims, tick]);
 
   // keep the newest message in view
   const lastCount = ids.length ? sims[ids[ids.length - 1]]?.messages.length ?? 0 : 0;
@@ -84,6 +109,7 @@ export default function ChatPage() {
     setBusy(true);
     setError(null);
     try {
+      setAccessCode(code.trim());
       const { id } = await api.startSimulation({ scenario: { question }, provider: provider || undefined });
       const next = [...ids, id];
       setIds(next);
@@ -104,7 +130,9 @@ export default function ChatPage() {
     saveIds([]);
   }
 
-  const anyRunning = ids.some((id) => sims[id] && !["complete", "failed"].includes(sims[id].status));
+  const anyRunning = ids.some((id) => isRunning(sims[id]));
+  const providers = site?.providers ?? Object.keys(MODEL_LABELS);
+  const needCode = !!site?.access_code_required;
 
   return (
     <div className="flex min-h-[calc(100vh-9rem)] flex-col">
@@ -171,7 +199,9 @@ export default function ChatPage() {
       >
         {error && (
           <p role="alert" className="mb-2 text-sm text-marker-red">
-            {error.includes("fetch") ? `Can't reach the API at ${API_URL}. Start it with make api.` : error}
+            {/fetch|network/i.test(error)
+              ? API_URL.startsWith("/") ? "Can't reach the server right now. Please try again in a moment." : `Can't reach the backend at ${API_URL}. Start it with make dev.`
+              : error}
           </p>
         )}
         <div className="flex items-end gap-2">
@@ -200,14 +230,21 @@ export default function ChatPage() {
           <label className="flex items-center gap-2">
             Model
             <select value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded border border-rule bg-white px-2 py-1">
-              <option value="">Server default</option>
-              <option value="local">Local model</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-              <option value="gemini">Gemini</option>
-              <option value="mock">Mock (offline test)</option>
+              <option value="">
+                Default{site ? ` (${MODEL_LABELS[site.default_provider] ?? site.default_provider})` : ""}
+              </option>
+              {providers.filter((p) => p !== site?.default_provider).map((p) => (
+                <option key={p} value={p}>{MODEL_LABELS[p] ?? p}</option>
+              ))}
             </select>
           </label>
+          {needCode && (
+            <label className="flex items-center gap-2">
+              Access code
+              <input type="password" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off"
+                className="w-28 rounded border border-rule bg-white px-2 py-1" />
+            </label>
+          )}
           <span>
             {anyRunning ? "The council is talking. A full discussion is 16 model calls." : "Enter to send, Shift+Enter for a new line."}
           </span>

@@ -8,6 +8,7 @@
   hoop report               # print data-quality reports
   hoop simulate ...         # CLI debate (same as python simulate.py)
   hoop serve                # FastAPI on :8000
+  hoop copy-db URL          # copy the finished database to a hosted Postgres (e.g. Neon for Vercel)
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import textwrap
 
@@ -150,6 +152,64 @@ def cmd_simulate(a):
         print(f"\nfull transcript written to {a.json_out}")
 
 
+SKIP_WHEN_COPYING = {"simulations", "simulation_rounds", "simulation_messages", "coach_decisions", "simulation_steps"}
+
+
+def cmd_copy_db(a):
+    """Copy every stats table (and the built context packages) from your local database to another one,
+    e.g. the Neon database your Vercel project uses. The target's copies of these tables are replaced;
+    saved chats are left alone unless --with-chats."""
+    import json as _json
+
+    from sqlalchemy import delete, func, insert, inspect, select, text
+
+    from .db.models import Base, ContextPackage
+    from .db.session import make_engine, normalize_url
+    from .players import DISPLAY_ORDER
+
+    target = a.url or ""
+    if not target:
+        sys.exit("Give the target database URL: hoop copy-db 'postgresql://...'  (Neon: the connection string from "
+                 "Vercel > Storage > your database > .env.local, DATABASE_URL)")
+    if normalize_url(target) == normalize_url(config.DATABASE_URL):
+        sys.exit("The target is the same as your local DATABASE_URL; nothing to copy.")
+    src, dst = make_engine(config.DATABASE_URL), make_engine(target)
+    print(f"from: {src.url.render_as_string(hide_password=True)}\nto:   {dst.url.render_as_string(hide_password=True)}")
+    Base.metadata.create_all(dst)
+    src_tables = set(inspect(src).get_table_names())
+    tables = [t for t in Base.metadata.sorted_tables if t.name in src_tables
+              and (a.with_chats or t.name not in SKIP_WHEN_COPYING)]
+    with dst.begin() as d:
+        for t in reversed(tables):
+            d.execute(delete(t))
+    for t in tables:
+        n = 0
+        with src.connect() as s, dst.begin() as d:
+            rows = s.execute(select(t)).mappings()
+            batch = []
+            for r in rows:
+                batch.append(dict(r))
+                if len(batch) >= 500:
+                    d.execute(insert(t), batch); n += len(batch); batch = []
+            if batch:
+                d.execute(insert(t), batch); n += len(batch)
+            if dst.dialect.name == "postgresql" and n and "id" in t.c and t.c.id.type.python_type is int:
+                d.execute(text(f"SELECT setval(pg_get_serial_sequence('{t.name}', 'id'), (SELECT max(id) FROM {t.name}))"))
+        print(f"  {t.name:<32} {n:>7} rows")
+    # context packages: make sure the target has one per player, from the local cache files if needed
+    with dst.begin() as d:
+        have = {r[0] for r in d.execute(select(ContextPackage.slug))}
+        for slug in DISPLAY_ORDER:
+            f = config.CONTEXT_CACHE_DIR / f"{slug}.json"
+            if slug not in have and f.exists():
+                d.execute(insert(ContextPackage), [{"slug": slug, "package": _json.loads(f.read_text())}])
+                have.add(slug)
+        missing = [x for x in DISPLAY_ORDER if x not in have]
+        total = d.execute(select(func.count()).select_from(ContextPackage)).scalar()
+    print(f"  context packages: {total}" + (f" (missing: {', '.join(missing)}; run hoop build-context)" if missing else ""))
+    print("done. The hosted backend can now answer questions from this database.")
+
+
 def cmd_serve(a):
     import uvicorn
 
@@ -183,6 +243,11 @@ def build_parser():
     p = sub.add_parser("simulate"); add_sim_args(p); p.set_defaults(fn=cmd_simulate)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8000)
     p.add_argument("--reload", action="store_true"); p.set_defaults(fn=cmd_serve)
+    p = sub.add_parser("copy-db", help="copy the local database to a hosted one (e.g. Neon for Vercel)")
+    p.add_argument("url", nargs="?", default=os.environ.get("HOOP_TARGET_DATABASE_URL"),
+                   help="target database URL (or set HOOP_TARGET_DATABASE_URL)")
+    p.add_argument("--with-chats", action="store_true", help="also copy saved discussions")
+    p.set_defaults(fn=cmd_copy_db)
     return ap
 
 
@@ -194,7 +259,7 @@ def add_sim_args(p):
     p.add_argument("--clock", type=float, help="optional: seconds left")
     p.add_argument("--defense", help="optional: defensive scheme")
     p.add_argument("--scenario", help="JSON file with fields (overrides the above)")
-    p.add_argument("--provider", help="anthropic|openai|gemini|local|mock (default from HOOP_LLM_PROVIDER)")
+    p.add_argument("--provider", help="openrouter|anthropic|openai|gemini|local|mock (default from HOOP_LLM_PROVIDER)")
     p.add_argument("--player-model"); p.add_argument("--coach-provider"); p.add_argument("--coach-model")
     p.add_argument("--save", action="store_true", help="persist the simulation")
     p.add_argument("--files", action="store_true", help="with --save: store as JSON instead of DB")

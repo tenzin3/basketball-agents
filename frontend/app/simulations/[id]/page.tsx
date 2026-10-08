@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import ChatExchange from "@/components/ChatExchange";
 import DataDrawer from "@/components/DataDrawer";
-import { api } from "@/lib/api";
+import { advance, api, isRunning } from "@/lib/api";
 import type { SimMessage, Simulation } from "@/lib/types";
 
 /** A single council discussion on its own page (shareable link). */
@@ -18,13 +18,16 @@ export default function SimulationPage() {
   useEffect(() => {
     let stop = false;
     let timer: ReturnType<typeof setTimeout>;
+    let last: Simulation | null = null;
     const poll = async () => {
       try {
-        const s = await api.simulation(id);
+        // step mode (hosted): each call runs the next round; otherwise just re-read progress
+        const { sim: s, wait } = last && isRunning(last) ? await advance(last) : { sim: await api.simulation(id), wait: 0 };
         if (stop) return;
+        last = s;
         setSim(s);
         setErr(null);
-        if (s.status !== "complete" && s.status !== "failed") timer = setTimeout(poll, 1500);
+        if (isRunning(s)) timer = setTimeout(poll, wait);
       } catch (e: any) {
         if (!stop) { setErr(e.message ?? String(e)); timer = setTimeout(poll, 3000); }
       }

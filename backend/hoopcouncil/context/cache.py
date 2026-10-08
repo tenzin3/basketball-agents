@@ -1,7 +1,8 @@
 """career_context_cache/<slug>.json (+ <slug>_context.txt for manual inspection).
 
 Generated from the database; never edited by hand. The database remains the source of truth.
-Simulations read the cache and only rebuild when a file is missing.
+Each package is also saved in the database (context_packages) so a hosted backend needs no files.
+Simulations read memory -> file -> database, and only rebuild when all three are missing.
 """
 from __future__ import annotations
 
@@ -34,10 +35,14 @@ def build_player(slug: str, repo: Repository | None = None, write: bool = True) 
     except Exception as e:  # embeddings are optional
         log.warning("embeddings skipped: %s", e)
     repo.save_documents(slug, docs)
+    repo.save_package(slug, pkg)
     if write:
-        config.CONTEXT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        (config.CONTEXT_CACHE_DIR / f"{slug}.json").write_text(json.dumps(pkg, indent=1, default=str))
-        (config.CONTEXT_CACHE_DIR / f"{slug}_context.txt").write_text(pkg["text"]["layer1"] + "\n\n" + pkg["text"]["layer2"])
+        try:
+            config.CONTEXT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            (config.CONTEXT_CACHE_DIR / f"{slug}.json").write_text(json.dumps(pkg, indent=1, default=str))
+            (config.CONTEXT_CACHE_DIR / f"{slug}_context.txt").write_text(pkg["text"]["layer1"] + "\n\n" + pkg["text"]["layer2"])
+        except OSError as e:  # read-only filesystem (hosted)
+            log.warning("could not write the context cache file: %s", e)
     return pkg
 
 
@@ -55,7 +60,8 @@ def load_package(slug: str, repo: Repository | None = None) -> dict | None:
     if p.exists():
         pkg = json.loads(p.read_text())
     else:
-        pkg = build_player(slug, repo)
+        repo = repo or get_repository()
+        pkg = repo.load_package(slug) or build_player(slug, repo)
     if pkg is not None:
         _mem[slug] = pkg
     return pkg

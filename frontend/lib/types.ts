@@ -181,6 +181,17 @@ export interface Simulation {
   messages: SimMessage[];
   coach_decision: { decision: CoachDecisionT; model?: string } | null;
   disclaimer?: string;
+  /** "steps": the browser drives each round (hosted on Vercel); "background": the server runs them all. */
+  run_mode?: "steps" | "background";
+  ran_stage?: number | null;
+}
+
+export interface SiteConfig {
+  run_mode: "steps" | "background";
+  default_provider: string;
+  providers: string[];
+  access_code_required: boolean;
+  daily_limit: number | null;
 }
 
 export interface PromptPlayer {

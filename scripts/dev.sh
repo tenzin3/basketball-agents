@@ -12,7 +12,7 @@ if sed -l q </dev/null >/dev/null 2>&1; then SED="sed -l"; else SED="sed -u"; fi
 tag() { $SED "s/^/[$1] /"; }
 
 provider=$(grep -E '^HOOP_LLM_PROVIDER=' .env 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '"'"'"' ')
-provider=${provider:-anthropic}
+provider=${provider:-openrouter}
 
 # 1. Database
 if command -v docker >/dev/null 2>&1; then

@@ -443,3 +443,28 @@ class CoachDecision(Base):
     raw_text: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ContextPackage(Base):
+    """The built career context package per player (also cached in career_context_cache/<slug>.json).
+    Stored here so a hosted backend (e.g. Vercel) needs nothing but the database."""
+    __tablename__ = "context_packages"
+    slug: Mapped[str] = mapped_column(String(32), primary_key=True)
+    package: Mapped[dict] = mapped_column(JSONType)
+    built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class SimulationStep(Base):
+    """Claims one stage of a debate (1-3 = rounds, 4 = coach) when the browser drives the debate step by step,
+    so two requests never run the same stage twice."""
+    __tablename__ = "simulation_steps"
+    __table_args__ = (UniqueConstraint("simulation_id", "stage"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    simulation_id: Mapped[str] = mapped_column(ForeignKey("simulations.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+RUNTIME_TABLES = ("simulations", "simulation_rounds", "simulation_messages", "coach_decisions", "simulation_steps",
+                  "context_packages")

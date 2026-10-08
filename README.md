@@ -34,9 +34,10 @@ say this?** under any message to see exactly which data that reply was built fro
 ## Common questions
 
 **Do I need to pay for anything?**
-No. You can run everything for free with a local AI model through [Ollama](https://ollama.com). Hosted models
-(Anthropic, OpenAI, Google Gemini) give better answers but need an API key, and you pay the provider per use. One
-question makes 16 AI calls: 5 players × 3 rounds, plus the Coach.
+Not necessarily. On your Mac you can use a free local model through [Ollama](https://ollama.com). Online, the app
+uses [OpenRouter](https://openrouter.ai): one key that reaches many AI models, including free ones. HoopCouncil tries
+the free models first and only falls back to a cheap paid model (about a cent per question) when no free one
+answers. One question makes 16 AI calls: 5 players × 3 rounds, plus the Coach.
 
 **Can the AI make up stats?**
 It is told not to, and it is only given numbers from the checked database. Each number it uses is labelled as either
@@ -64,7 +65,7 @@ and off by default; read NBA.com's terms before turning it on. If you put the ap
 sites' terms first.
 
 **Can I put it online?**
-Yes, see [Putting it online](#putting-it-online) below.
+Yes, for free, on Vercel. See [Putting it online](#putting-it-online-vercel) below.
 
 ## Starting the app (Mac)
 
@@ -141,6 +142,7 @@ Set `HOOP_LLM_PROVIDER` in `.env`, or pick one from the **Model** menu on the we
 
 | Choice | What you need | Good to know |
 |---|---|---|
+| `openrouter` (default) | `OPENROUTER_API_KEY` in `.env` | Free models first, then a cheap paid backup from your OpenRouter credit. Free models change often and can be slow or busy; the backup keeps answers coming. |
 | `local` | Ollama, then `ollama pull llama3.1` | Free and private, but slower and rougher answers. Ollama must run with `OLLAMA_CONTEXT_LENGTH=16384` (`make dev` does this), otherwise most of each player's data is silently cut off. |
 | `anthropic` | `ANTHROPIC_API_KEY` in `.env` | Best answers. The players use a cheaper model and the Coach a stronger one, to keep costs down. |
 | `openai` / `gemini` | `OPENAI_API_KEY` / `GEMINI_API_KEY` in `.env` | Same idea: cheaper model for players, stronger for the Coach. |
@@ -156,7 +158,7 @@ To use a different Ollama model, set `HOOP_PLAYER_MODEL` and `HOOP_COACH_MODEL` 
 | Website says "Can't reach the API" | The backend isn't running. Start `make dev` (or `make api`) and reload the page. |
 | `model 'llama3.1' not found` | Run `ollama pull llama3.1`, or set `HOOP_PLAYER_MODEL` / `HOOP_COACH_MODEL` to a model you have. |
 | `ollama serve` says the address is already in use | Ollama is already running without the bigger context setting. Run `pkill ollama` (and quit the Ollama menu-bar app), then start again. |
-| A debate fails because of a missing API key | Your `.env` model needs a key. Add it, or switch to `local` or `mock`. |
+| A debate fails because of a missing API key | Your `.env` model needs a key (`OPENROUTER_API_KEY` for the default). Add it, or switch to `local` or `mock`. |
 | The backend can't connect to the database | Open Docker Desktop, then run `make db`. |
 | "No career data" or empty player pages | Run `make pipeline`. |
 | Port 3000 or 8000 already in use | An old copy is still running. Stop it with Ctrl-C, or run `lsof -ti :8000 \| xargs kill`. |
@@ -166,29 +168,105 @@ To use a different Ollama model, set `HOOP_PLAYER_MODEL` and `HOOP_COACH_MODEL` 
 **No Docker?** Put `DATABASE_URL=sqlite:///./hoopcouncil.db` in `.env` and skip `make db`. That's fine on your own
 computer.
 
-## Putting it online
+## Putting it online (Vercel)
 
-Nothing is set up for this yet. The app has three parts: the website, the backend and the database. Two good ways to
-host them:
+Everything runs on [Vercel](https://vercel.com) for free: the website, the Python backend and a free Neon Postgres
+database for the stats. Only the AI answers come from OpenRouter. The settings are already in the code
+(`vercel.json`), so you only do the account and data steps below.
 
-| Option | What it looks like | Cost | Changes needed |
-|---|---|---|---|
-| **One small server** | Rent a small cloud server (Hetzner, DigitalOcean, AWS Lightsail) and run everything there with Docker. | About $5–12 a month | Very few: add Docker files and HTTPS. |
-| **All on Vercel** | Website and backend on [Vercel](https://vercel.com), database on Neon (connected through Vercel). | Free tiers to start | Some code changes, listed below. |
+**What's different from your Mac:**
 
-**Why Vercel needs changes:** on Vercel, the backend only runs while it is answering a request (at most 5 minutes
-on the free plan) and can't keep files. Today a debate keeps running in the background and is saved as a file. For
-Vercel, each round would become its own request and debates would be saved in the database.
+* **One round at a time.** On Vercel the backend only runs while it is answering a request (up to 5 minutes), so
+  your browser asks for one round at a time: round 1, 2, 3, then the coach. If you close the tab mid-debate, it
+  continues when you open it again. This switches on by itself.
+* **No local model.** Ollama can't run on Vercel, so the hosted site uses OpenRouter.
 
-**Either way:**
+### What it costs
 
-* **Use a hosted AI model.** The local model can't run on these hosts, so you need an API key. Anyone with your link
-  would spend it, so add a password or a limit on questions.
-* **Don't run the stats download on the server.** Run it on your Mac, then copy the finished database up with
-  `pg_dump` / `pg_restore`, and bring the `career_context_cache/` fact sheets. Git ignores them; `hoop build-context`
-  rebuilds them from the database.
-* **Two settings must point at each other:** `NEXT_PUBLIC_API_URL` on the website (the backend's web address) and
-  `HOOP_CORS_ORIGINS` on the backend (the website's address).
+* **Vercel and Neon:** free. Vercel's free Hobby plan is for personal, non-commercial projects.
+* **OpenRouter:** free models cost nothing. They're limited to 50 requests a day, about 3 questions, until you've
+  added $10 of credit once; after that, 1,000 a day, about 60 questions. The $10 isn't used up by free models. It
+  pays for the backup model only when no free model answers, at about a cent per question.
+
+### What you need
+
+* The code on GitHub. Yours is at `github.com/tenzin3/basketball-agents`.
+* A [Vercel](https://vercel.com) account. Sign up with GitHub.
+* An [OpenRouter](https://openrouter.ai) account and an API key (in OpenRouter: your profile menu, **Keys**,
+  **Create key**). Optional but recommended: add $10 of credit (**Credits**).
+* Your local database with the stats, running (`make db`). You downloaded these once with `make pipeline`.
+
+### Step by step
+
+1. **Try OpenRouter on your Mac first.** Put your key in `.env`, run `make dev`, pick **OpenRouter** under the chat box
+   and ask a question:
+   ```bash
+   OPENROUTER_API_KEY=sk-or-...
+   ```
+2. **Push the code to GitHub:**
+   ```bash
+   git add -A && git commit -m "Ready for Vercel" && git push
+   ```
+3. **Create the Vercel project.** On [vercel.com/new](https://vercel.com/new), import `basketball-agents`. Leave
+   **Root Directory** as the top of the repository (`vercel.json` tells Vercel about the `frontend/` and `backend/`
+   parts) and click **Deploy**. The site loads, but questions won't work until steps 4 to 7 are done.
+4. **Add the database.** In the project, open **Storage**, create a **Neon** (Postgres) database on the free plan and
+   connect it to the project. This adds a `DATABASE_URL` setting for you.
+5. **Copy your stats into it.** Open the new database in **Storage** and copy its connection string (it starts with
+   `postgresql://` or `postgres://`). On your Mac, with `make db` running:
+   ```bash
+   make copy-db TO="postgresql://...paste it here..."
+   ```
+   It creates the tables, copies every stats table and the five players' fact sheets, and prints how many rows went
+   over. Your saved chats stay on your Mac.
+6. **Add the settings** in **Settings > Environment Variables**:
+
+   | Name | Value | Why |
+   |---|---|---|
+   | `OPENROUTER_API_KEY` | your key | lets the AI players and coach answer; only the backend can read it |
+   | `HOOP_ACCESS_CODE` | a code you choose | **recommended**: only people with the code can ask, so strangers can't use up your free quota or credit |
+   | `HOOP_DAILY_LIMIT` | e.g. `30` | optional: questions per 24 hours across all visitors. Hosted, it is 50 unless you change it (`0` = no cap) |
+
+7. **Redeploy** so the settings take effect: **Deployments**, the menu (⋯) on the latest one, **Redeploy**.
+8. **Check it.** Open `https://<your-project>.vercel.app/api/health`. It should show `"ok": true` and
+   `"run_mode": "steps"`. Then open the site, type the access code under the chat box, and ask.
+
+From now on, every `git push` redeploys. If you run `make pipeline` again, run `make copy-db` again to update the
+hosted stats.
+
+### If something goes wrong
+
+| Problem | Fix |
+|---|---|
+| "Can't reach the server right now" | Open `/api/health` on your site. If that fails too, check the project's **Logs** in Vercel. |
+| "No career data for: …" | Step 5 hasn't been done, or went to another database. Run `make copy-db` with the connection string of the database connected to this project. |
+| "This council needs an access code" | Type the code from `HOOP_ACCESS_CODE` in the box under the chat. |
+| A debate fails with `OPENROUTER_API_KEY is not set` | Add the key in Vercel's Environment Variables, then redeploy. |
+| A debate fails with HTTP 402 or 429 from OpenRouter | 402: your OpenRouter balance is below zero or the backup needs credit. 429: the day's free requests are used up. Add credit, or wait until tomorrow. |
+| Replies are slow or a round says it took too long | Free models can be slow or busy. The page retries by itself. To skip free models, set `HOOP_OPENROUTER_PLAYER_MODEL=meta-llama/llama-3.1-8b-instruct` (paid, about a cent per question). |
+| The build fails on `services` in `vercel.json` | Running several parts in one Vercel project ("Services") is in beta. Instead, make two Vercel projects from the same repository, one with Root Directory `frontend` and one with `backend`. Connect the database and add the settings to the backend project. Set `NEXT_PUBLIC_API_URL` on the website project to the backend's address, and `HOOP_CORS_ORIGINS` on the backend project to the website's address. |
+
+### Safety built in
+
+* **Your key never reaches the browser.** It lives only in Vercel's settings and is used by the backend.
+* **Visitors can't pick expensive models.** They can only choose between providers you have a key for, and
+  requests naming specific models are refused when hosted (`HOOP_ALLOW_MODEL_OVERRIDE=1` turns this back on).
+* **A daily cap of 50 questions** applies when hosted, unless you set `HOOP_DAILY_LIMIT`.
+* **Visitors can't read each other's questions.** The list of recent debates is turned off when hosted; a single debate
+  is only reachable through its long random link.
+* **Error messages are cleaned** of anything that looks like a key, password or database address before visitors
+  see them.
+* **Choose a long access code** (a few random words). Each wrong guess is slowed down, but a short code can still be
+  guessed.
+
+### Changing the models
+
+The players and the coach both start with `openrouter/free`, which picks a free model that is available right now.
+The backups are `meta-llama/llama-3.1-8b-instruct` for players and `meta-llama/llama-3.3-70b-instruct` for the coach.
+To choose different models, set any of these (model ids are listed on [openrouter.ai/models](https://openrouter.ai/models)):
+`HOOP_OPENROUTER_PLAYER_MODEL`, `HOOP_OPENROUTER_COACH_MODEL`, `HOOP_OPENROUTER_PLAYER_FALLBACKS`,
+`HOOP_OPENROUTER_COACH_FALLBACKS` (comma-separated). Free models can be removed at any time, and some free providers
+may use prompts for training; OpenRouter's privacy settings let you exclude those.
 
 ---
 
@@ -221,8 +299,10 @@ Coach (stronger model) → answer (+ play call and court steps for play question
 | `make report` | Data-quality report per player |
 | `python simulate.py "question" [--provider local] [--context ...]` | Ask from the terminal |
 | `hoop serve` / `make api` | API only |
+| `hoop copy-db URL` / `make copy-db TO=URL` | Copy the local database (stats + fact sheets) to the hosted Postgres |
 
-Model settings in `.env`: `HOOP_LLM_PROVIDER` (`anthropic`, `openai`, `gemini`, `local`, `mock`). Players default to
+Model settings in `.env`: `HOOP_LLM_PROVIDER` (`openrouter`, `anthropic`, `openai`, `gemini`, `local`, `mock`). The
+OpenRouter settings are described under [Changing the models](#changing-the-models). For the others, players default to
 the cheap tier (`claude-haiku-4-5-20251001` on Anthropic) and the coach to the strong tier (`claude-sonnet-5-5`).
 Override with `HOOP_PLAYER_MODEL`, `HOOP_COACH_PROVIDER` and `HOOP_COACH_MODEL`. `local` is any OpenAI-compatible
 server, such as Ollama.
@@ -238,8 +318,17 @@ server, such as Ollama.
 | `GET /players/{player}/context` | The career context package |
 | `GET /players/{player}/quality` | Data-quality report |
 | `GET /prompts?question=` | Prompt templates, models and per-player retrieval (used by How it works) |
-| `POST /simulations` | Starts a debate in the background; returns `{id}` |
+| `GET /config` | Run mode, model choices, whether an access code is needed |
+| `POST /simulations` | Starts a debate; returns `{id, run_mode}`. Needs header `x-access-code` if `HOOP_ACCESS_CODE` is set |
+| `POST /simulations/{id}/step` | Step mode: runs the next round (or the coach) and returns the debate |
 | `GET /simulations/{id}` | Status, messages so far, coach decision |
+
+Every route is also served under `/api` (for example `/api/players`), the path the website uses on Vercel.
+Debates run in one of two modes (`HOOP_RUN_MODE`): `background`, the local default, where the API runs all rounds
+itself, or `steps`, the default on Vercel, where the browser calls `/step` once per round. Each step rebuilds the
+agents from the stored question and earlier rounds, and a row in `simulation_steps` stops two requests running the
+same round. The five fact sheets are stored in the database (`context_packages`) as well as in
+`career_context_cache/`, so the hosted backend needs nothing but `DATABASE_URL`.
 
 ### Where things live
 
@@ -251,14 +340,16 @@ backend/hoopcouncil/
   derive/                 aggregates, features, peak score, phases, archetypes, strengths/limitations, milestones
   quality/validate.py     checks + per-player data-quality report
   context/                context builder, retrieval documents, BM25 retrieval, cache
-  llm/providers.py        Anthropic / OpenAI / Gemini / local / mock
+  llm/providers.py        OpenRouter / Anthropic / OpenAI / Gemini / local / mock
   agents/                 prompts, player + coach agents, JSON parsing and clean-up, court validation
   orchestrator.py         Round 1 → 2 → 3 → Coach (rounds run the five players in parallel)
   api/                    FastAPI
+backend/main.py           `app` entry point for Vercel
 backend/simulate.py       terminal version of the chat
 backend/tests/            tests on synthetic fixtures and the mock model
 frontend/                 Next.js 15, React 19, TypeScript, Tailwind 4
 scripts/dev.sh            the `make dev` launcher
+vercel.json               one Vercel project: website at /, backend at /api
 docs/                     data sources, peak_score formula, archetype rules
 career_context_cache/     generated by `hoop build-context` (don't edit by hand)
 ```
@@ -275,10 +366,12 @@ career_context_cache/     generated by `hoop build-context` (don't edit by hand)
 
 ### Testing
 
-`cd backend && python -m pytest` (or `python -m unittest tests.test_pipeline`) runs 31 tests. They cover parsing
+`cd backend && python -m pytest` (or `python -m unittest tests.test_pipeline`) runs 40 tests. They cover parsing
 (traded seasons, did-not-play rows, tables hidden in HTML comments, old and new table ids), awards, playoff-round
 inference, aggregates, validation (including deliberately broken data), the context builder, retrieval, prompt
-templates, output clean-up and a full mock debate. All tests use **synthetic** data, not real statistics.
+templates, output clean-up, a full mock debate, the OpenRouter fallbacks, and the hosted setup (database URLs,
+step-by-step debates through the API with an access code and daily limit, and `copy-db`). All tests use **synthetic** data, not real statistics.
 
 The real pipeline (live download, PostgreSQL load, validation) has been run end to end. The website was checked in a
-browser against a mock backend. `next build` (a production build) hasn't been run yet.
+browser against the real backend in step mode (SQLite, mock model). Not yet run: a real Vercel deploy, `copy-db`
+into Neon, a live OpenRouter call, and `next build`.

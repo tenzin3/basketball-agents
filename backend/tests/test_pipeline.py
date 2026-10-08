@@ -328,5 +328,262 @@ class FileStoreFlowTests(unittest.TestCase):
                 config.CONTEXT_CACHE_DIR = old
 
 
+def _have(*mods):
+    import importlib.util
+
+    return all(importlib.util.find_spec(m) for m in mods)
+
+
+def _synthetic_packages():
+    from hoopcouncil.players import PLAYERS
+
+    ds = synthetic_dataset()
+    d = derive_all(ds)
+    return {slug: dict(build_package(ds, d), player=cfg.full_name, slug=slug) for slug, cfg in PLAYERS.items()}
+
+
+class HostingTests(unittest.TestCase):
+    """Serverless hosting (Vercel): database URL handling, packages in the DB, and step-by-step debates."""
+
+    @unittest.skipUnless(_have("sqlalchemy"), "needs sqlalchemy")
+    def test_database_url_normalisation(self):
+        from hoopcouncil.db.session import normalize_url
+
+        self.assertEqual(normalize_url("postgres://u:p@h/db?sslmode=require"), "postgresql+psycopg://u:p@h/db?sslmode=require")
+        self.assertEqual(normalize_url("postgresql://u:p@h/db"), "postgresql+psycopg://u:p@h/db")
+        self.assertEqual(normalize_url("postgresql+psycopg://u@h/db"), "postgresql+psycopg://u@h/db")
+        self.assertEqual(normalize_url("sqlite:///x.db"), "sqlite:///x.db")
+
+    def test_memory_store_runs_stage_by_stage(self):
+        from hoopcouncil.orchestrator import run_stage
+        from hoopcouncil.players import PLAYERS
+        from hoopcouncil.simulation_store import MemorySimulationStore
+
+        pk = _synthetic_packages()
+        docs = {slug: [] for slug in PLAYERS}
+        store = MemorySimulationStore(persist=False)
+        sid = store.create({"question": "Down 1, 9 seconds left. Who takes the last shot?"}, {"provider": "mock"})
+        ran = [asyncio.run(run_stage(store, sid, packages=pk, documents=docs)) for _ in range(5)]
+        self.assertEqual(ran, [1, 2, 3, 4, None])
+        sim = store.get(sid)
+        self.assertEqual(sim["status"], "complete")
+        self.assertEqual(len(sim["messages"]), 15)
+        self.assertEqual([m["round"] for m in sim["messages"]], [1] * 5 + [2] * 5 + [3] * 5)
+        self.assertIn("verdict", sim["coach_decision"]["decision"])
+
+    def test_stage_claims(self):
+        from hoopcouncil.simulation_store import MemorySimulationStore
+
+        store = MemorySimulationStore(persist=False)
+        sid = store.create({"question": "q"}, {})
+        self.assertTrue(store.claim_stage(sid, 1))
+        self.assertFalse(store.claim_stage(sid, 1))            # someone else is running it
+        self.assertTrue(store.claim_stage(sid, 1, stale_after_s=-1))  # ...but a stale claim can be taken over
+        store.finish_stage(sid, 1)
+        self.assertFalse(store.claim_stage(sid, 1, stale_after_s=-1))  # finished stages never rerun
+
+    @unittest.skipUnless(_have("sqlalchemy", "fastapi", "httpx"), "needs sqlalchemy, fastapi and httpx")
+    def test_api_step_mode_on_sqlite(self):
+        """The Vercel setup end to end: /api prefix, access code, packages read from the DB, browser-driven rounds."""
+        from fastapi.testclient import TestClient
+
+        from hoopcouncil import config
+        from hoopcouncil.api import main as api
+        from hoopcouncil.context import cache
+        from hoopcouncil.db import session
+        from hoopcouncil.repository import SQLRepository, get_repository
+
+        saved = {k: getattr(config, k) for k in ("RUN_MODE", "ACCESS_CODE", "DAILY_LIMIT", "ALLOWED_PROVIDERS",
+                                                  "CONTEXT_CACHE_DIR", "LLM_PROVIDER", "COACH_PROVIDER")}
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                session._engine, session._runtime_ready = None, False
+                session.get_engine(f"sqlite:///{tmp}/hoop.db")
+                session.init_db()
+                get_repository.cache_clear()
+                cache.clear_memory_cache()
+                config.CONTEXT_CACHE_DIR = Path(tmp) / "no-cache-files"  # force the database path
+                config.RUN_MODE, config.ACCESS_CODE, config.DAILY_LIMIT = "steps", "letmein", 2
+                config.ALLOWED_PROVIDERS, config.LLM_PROVIDER, config.COACH_PROVIDER = ["mock"], "mock", "mock"
+                repo = SQLRepository()
+                for slug, pkg in _synthetic_packages().items():
+                    repo.save_package(slug, pkg)
+                if hasattr(api.app.state, "store"):
+                    del api.app.state.store
+                c = TestClient(api.app)
+
+                cfg = c.get("/api/config").json()
+                self.assertEqual(cfg["run_mode"], "steps")
+                self.assertTrue(cfg["access_code_required"])
+                self.assertEqual(cfg["providers"], ["mock"])
+                self.assertEqual(c.get("/config").status_code, 200)  # root paths still work locally
+
+                body = {"scenario": {"question": "Down 1 with 9 seconds left. Who takes the last shot?"}}
+                self.assertEqual(c.post("/api/simulations", json=body).status_code, 401)
+                self.assertEqual(c.post("/api/simulations", json={**body, "provider": "anthropic"},
+                                        headers={"x-access-code": "letmein"}).status_code, 400)
+                r = c.post("/api/simulations", json=body, headers={"x-access-code": "letmein"})
+                self.assertEqual(r.status_code, 202, r.text)
+                self.assertEqual(r.json()["run_mode"], "steps")
+                sid = r.json()["id"]
+                self.assertEqual(c.post(f"/api/simulations/{sid}/step").status_code, 401)
+                stages = []
+                for _ in range(5):
+                    j = c.post(f"/api/simulations/{sid}/step", headers={"x-access-code": "letmein"}).json()
+                    stages.append(j["ran_stage"])
+                self.assertEqual(stages, [1, 2, 3, 4, None])
+                sim = c.get(f"/api/simulations/{sid}").json()
+                self.assertEqual(sim["status"], "complete", sim.get("error"))
+                self.assertEqual(len(sim["messages"]), 15)
+                self.assertIsNotNone(sim["coach_decision"])
+
+                c.post("/api/simulations", json=body, headers={"x-access-code": "letmein"})
+                self.assertEqual(c.post("/api/simulations", json=body, headers={"x-access-code": "letmein"}).status_code, 429)
+            finally:
+                for k, v in saved.items():
+                    setattr(config, k, v)
+                session._engine, session._runtime_ready = None, False
+                get_repository.cache_clear()
+                cache.clear_memory_cache()
+                if hasattr(api.app.state, "store"):
+                    del api.app.state.store
+
+    @unittest.skipUnless(_have("sqlalchemy"), "needs sqlalchemy")
+    def test_copy_db(self):
+        import argparse
+
+        from sqlalchemy import func, select
+
+        from hoopcouncil import cli, config
+        from hoopcouncil.db import models as m
+        from hoopcouncil.db import session
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_url, old_cache = config.DATABASE_URL, config.CONTEXT_CACHE_DIR
+            try:
+                src_url, dst_url = f"sqlite:///{tmp}/src.db", f"sqlite:///{tmp}/dst.db"
+                src = session.make_engine(src_url)
+                m.Base.metadata.create_all(src)
+                with src.begin() as c:
+                    c.execute(m.Player.__table__.insert(), [{"slug": "synth", "full_name": "Synthetic Guard"}])
+                    c.execute(m.Simulation.__table__.insert(), [{"id": "x", "scenario": {"question": "q"}}])
+                config.DATABASE_URL = src_url
+                config.CONTEXT_CACHE_DIR = Path(tmp) / "cache"
+                config.CONTEXT_CACHE_DIR.mkdir()
+                (config.CONTEXT_CACHE_DIR / "curry.json").write_text(json.dumps({"player": "Stephen Curry"}))
+                cli.cmd_copy_db(argparse.Namespace(url=dst_url, with_chats=False))
+                dst = session.make_engine(dst_url)
+                with dst.connect() as c:
+                    self.assertEqual(c.execute(select(func.count()).select_from(m.Player)).scalar(), 1)
+                    self.assertEqual(c.execute(select(func.count()).select_from(m.Simulation)).scalar(), 0)  # chats skipped
+                    self.assertEqual(c.execute(select(m.ContextPackage.slug)).scalars().all(), ["curry"])
+            finally:
+                config.DATABASE_URL, config.CONTEXT_CACHE_DIR = old_url, old_cache
+
+
+class OpenRouterTests(unittest.TestCase):
+    """OpenRouter provider: free models first, paid fallback, and the failure modes free models have."""
+
+    def _provider(self, replies):
+        import os
+
+        from hoopcouncil.llm.providers import make_provider
+
+        os.environ["OPENROUTER_API_KEY"] = "test-key"
+        p = make_provider("openrouter", tier="player")
+        calls = []
+
+        async def fake_post(url, payload, headers, retries=3):
+            calls.append(payload)
+            r = replies.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        p._post = fake_post
+        return p, calls
+
+    def test_defaults_free_first_with_paid_fallback(self):
+        p, calls = self._provider([{"choices": [{"message": {"content": "{}"}}], "model": "some/free-model"}])
+        self.assertEqual(p.model, "openrouter/free")
+        res = asyncio.run(p.complete("sys", "user"))
+        self.assertEqual(calls[0]["models"], ["openrouter/free", "meta-llama/llama-3.1-8b-instruct"])
+        self.assertEqual(res.model, "some/free-model")
+        self.assertGreaterEqual(calls[0]["max_tokens"], 4000)
+
+    def test_empty_reply_retries_on_fallback(self):
+        p, calls = self._provider([{"choices": [{"message": {"content": ""}}]},
+                                   {"choices": [{"message": {"content": "{\"message\": \"hi\"}"}}], "model": "meta-llama/llama-3.1-8b-instruct"}])
+        res = asyncio.run(p.complete("sys", "user"))
+        self.assertEqual(calls[1]["model"], "meta-llama/llama-3.1-8b-instruct")
+        self.assertIn("hi", res.text)
+
+    def test_error_inside_200_and_http_error_fall_back(self):
+        p, calls = self._provider([{"error": {"message": "upstream busy"}},
+                                   {"choices": [{"message": {"content": "ok"}}]}])
+        self.assertEqual(asyncio.run(p.complete("s", "u")).text, "ok")
+        p, calls = self._provider([RuntimeError("openrouter HTTP 400: bad model"),
+                                   {"choices": [{"message": {"content": "ok"}}]}])
+        self.assertEqual(asyncio.run(p.complete("s", "u")).text, "ok")
+
+    def test_missing_key_is_a_clear_error(self):
+        import os
+
+        from hoopcouncil.llm.providers import make_provider
+
+        old = os.environ.pop("OPENROUTER_API_KEY", None)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "OPENROUTER_API_KEY"):
+                make_provider("openrouter")._headers()
+        finally:
+            if old is not None:
+                os.environ["OPENROUTER_API_KEY"] = old
+
+
+class SecurityTests(unittest.TestCase):
+    def test_public_error_hides_secrets(self):
+        from hoopcouncil.orchestrator import public_error
+
+        msg = public_error(RuntimeError("openrouter HTTP 401: Bearer sk-or-v1-abcdef1234567890 bad\nsecond line"))
+        self.assertNotIn("abcdef1234567890", msg)
+        self.assertNotIn("second line", msg)
+        msg = public_error(RuntimeError("could not connect postgresql+psycopg://hoop:s3cret@db.neon.tech/x?key=AIzaXYZ"))
+        self.assertNotIn("s3cret", msg)
+        self.assertNotIn("AIzaXYZ", msg)
+
+    @unittest.skipUnless(_have("pydantic"), "needs pydantic")
+    def test_request_size_limits(self):
+        from pydantic import ValidationError
+
+        from hoopcouncil.api.schemas import SimulationRequest
+
+        with self.assertRaises(ValidationError):
+            SimulationRequest(scenario={"question": "x" * 2001})
+        with self.assertRaises(ValidationError):
+            SimulationRequest(scenario={"question": "q", "lineup": {f"p{i}": "x" for i in range(6)}})
+        with self.assertRaises(ValidationError):
+            SimulationRequest(scenario={"question": "q", "context": "x" * 5000})
+
+    @unittest.skipUnless(_have("sqlalchemy", "fastapi", "httpx"), "needs sqlalchemy, fastapi and httpx")
+    def test_hosted_guards(self):
+        from fastapi.testclient import TestClient
+
+        from hoopcouncil import config
+        from hoopcouncil.api import main as api
+
+        saved = {k: getattr(config, k) for k in ("HOSTED", "ALLOW_MODEL_OVERRIDE", "ACCESS_CODE", "ALLOWED_PROVIDERS")}
+        try:
+            config.HOSTED, config.ALLOW_MODEL_OVERRIDE, config.ACCESS_CODE = True, False, ""
+            config.ALLOWED_PROVIDERS = ["mock"]
+            c = TestClient(api.app)
+            self.assertEqual(c.get("/api/simulations").status_code, 404)  # nobody can list others' questions
+            r = c.post("/api/simulations", json={"scenario": {"question": "q"}, "player_model": "some/very-expensive-model"})
+            self.assertEqual(r.status_code, 400)
+            r = c.post("/api/simulations", json={"scenario": {"question": "q"}, "coach_provider": "anthropic"})
+            self.assertEqual(r.status_code, 400)
+        finally:
+            for k, v in saved.items():
+                setattr(config, k, v)
+
+
 if __name__ == "__main__":
     unittest.main()

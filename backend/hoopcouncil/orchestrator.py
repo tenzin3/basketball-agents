@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from . import config
 from .agents.agents import CoachAgent, PlayerAgent
@@ -23,6 +24,23 @@ class MissingDataError(RuntimeError):
     pass
 
 
+_SECRETS = [
+    (re.compile(r"(?i)(key|token|api[_-]?key|password)=[^&\s'\"]+"), r"\1=[hidden]"),
+    (re.compile(r"(?i)bearer\s+[a-z0-9._\-]+"), "Bearer [hidden]"),
+    (re.compile(r"\b(sk|pk|rk)-[A-Za-z0-9_\-]{8,}"), "[hidden key]"),
+    (re.compile(r"(?i)\b(postgres(?:ql)?(?:\+\w+)?://)[^@\s]+@"), r"\1[hidden]@"),
+]
+
+
+def public_error(e: Exception) -> str:
+    """The error text saved with a debate and shown to visitors: one line, short, with anything that looks like a
+    key, password or database login removed. Full details stay in the server log."""
+    text = (str(e).strip().splitlines() or [type(e).__name__])[0][:300]
+    for rx, repl in _SECRETS:
+        text = rx.sub(repl, text)
+    return text
+
+
 def normalize_scenario(s: dict) -> dict:
     """A chat question; any extra game-state fields are optional and passed through as context."""
     out = {k: v for k, v in dict(s).items() if v not in (None, "")}
@@ -30,10 +48,9 @@ def normalize_scenario(s: dict) -> dict:
     return out
 
 
-async def run_simulation(scenario: dict, store=None, sim_id: str | None = None, provider: str | None = None,
-                         player_model: str | None = None, coach_provider: str | None = None, coach_model: str | None = None,
-                         packages: dict | None = None, documents: dict | None = None, on_event=None) -> dict:
-    scenario = normalize_scenario(scenario)
+def _setup(scenario: dict, provider=None, player_model=None, coach_provider=None, coach_model=None,
+           packages: dict | None = None, documents: dict | None = None):
+    """Load data, build the five player agents for this question, and pick the models."""
     repo = None
     if packages is None:
         repo = get_repository()
@@ -47,6 +64,29 @@ async def run_simulation(scenario: dict, store=None, sim_id: str | None = None, 
         documents = {slug: repo.load_documents(slug) for slug in PLAYERS}
     p_provider = make_provider(provider, player_model, tier="player")
     c_provider = make_provider(coach_provider or provider or config.COACH_PROVIDER, coach_model, tier="coach")
+    query = generate_query(scenario)
+    agents = []
+    for slug in DISPLAY_ORDER:
+        cfg = PLAYERS[slug]
+        mates = [PLAYERS[o].full_name for o in DISPLAY_ORDER if o != slug]
+        a = PlayerAgent(cfg, packages[slug], documents.get(slug, []), p_provider, mates, config.CONTEXT_TOKEN_BUDGET, packages)
+        a.prepare(query)
+        agents.append(a)
+    return agents, p_provider, c_provider, packages, query
+
+
+def _coach_meta(packages: dict, query: dict) -> dict:
+    return {"contexts": [packages[s]["player"] for s in DISPLAY_ORDER], "rounds": [1, 2, 3],
+            "retrieval_intents": query.get("intents")}
+
+
+async def run_simulation(scenario: dict, store=None, sim_id: str | None = None, provider: str | None = None,
+                         player_model: str | None = None, coach_provider: str | None = None, coach_model: str | None = None,
+                         packages: dict | None = None, documents: dict | None = None, on_event=None) -> dict:
+    """Run all four stages in one go (CLI and local API)."""
+    scenario = normalize_scenario(scenario)
+    agents, p_provider, c_provider, packages, query = _setup(scenario, provider, player_model, coach_provider,
+                                                             coach_model, packages, documents)
     llm_cfg = {"player_provider": p_provider.name, "player_model": p_provider.model,
                "coach_provider": c_provider.name, "coach_model": c_provider.model}
     if store is not None and sim_id is None:
@@ -55,16 +95,6 @@ async def run_simulation(scenario: dict, store=None, sim_id: str | None = None, 
     def emit(kind, payload=None):
         if on_event:
             on_event(kind, payload)
-
-    query = generate_query(scenario)
-    order = DISPLAY_ORDER
-    agents = []
-    for slug in order:
-        cfg = PLAYERS[slug]
-        mates = [PLAYERS[o].full_name for o in order if o != slug]
-        a = PlayerAgent(cfg, packages[slug], documents.get(slug, []), p_provider, mates, config.CONTEXT_TOKEN_BUDGET, packages)
-        a.prepare(query)
-        agents.append(a)
 
     async def run_round(n, coros):
         if store:
@@ -90,8 +120,7 @@ async def run_simulation(scenario: dict, store=None, sim_id: str | None = None, 
         emit("round_start", 4)
         coach = CoachAgent(c_provider, packages)
         coach_call = await coach.decide(scenario, round1, round2, round3)
-        coach_call["data_considered"] = {"contexts": [packages[s]["player"] for s in order], "rounds": [1, 2, 3],
-                                         "retrieval_intents": query.get("intents")}
+        coach_call["data_considered"] = _coach_meta(packages, query)
         if store:
             store.set_coach(sim_id, coach_call)
             store.complete_round(sim_id, 4)
@@ -100,7 +129,73 @@ async def run_simulation(scenario: dict, store=None, sim_id: str | None = None, 
     except Exception as e:
         log.exception("simulation failed")
         if store and sim_id:
-            store.set_status(sim_id, "failed", str(e))
+            store.set_status(sim_id, "failed", public_error(e))
         raise
     return {"id": sim_id, "scenario": scenario, "llm_config": llm_cfg, "query": query,
             "round1": round1, "round2": round2, "round3": round3, "coach_call": coach_call}
+
+
+STATUS_FOR_STAGE = {1: "round1", 2: "round2", 3: "round3", 4: "coach"}
+
+
+def next_stage(sim: dict) -> int | None:
+    """The first stage (1-3 rounds, 4 coach) that hasn't completed yet; None when the debate is finished."""
+    if sim["status"] in ("complete", "failed"):
+        return None
+    done = {r["round_number"] for r in sim.get("rounds", []) if r.get("completed_at")}
+    for n in (1, 2, 3, 4):
+        if n not in done:
+            return n
+    return None
+
+
+async def run_stage(store, sim_id: str, packages: dict | None = None, documents: dict | None = None) -> int | None:
+    """Run exactly one stage of a stored debate, then return. Used when the browser drives the debate
+    one request at a time (hosting where work stops once a response is sent, such as Vercel).
+
+    Returns the stage that ran, or None if there was nothing to do (finished, or another request is running it).
+    Each stage rebuilds the agents from the stored question and earlier rounds, so no state is kept in memory."""
+    sim = store.get(sim_id)
+    if sim is None:
+        raise KeyError(sim_id)
+    n = next_stage(sim)
+    if n is None or not store.claim_stage(sim_id, n):
+        return None
+    store.reset_stage(sim_id, n)  # clear leftovers if an earlier attempt at this stage timed out
+    cfg = sim.get("llm_config") or {}
+    scenario = normalize_scenario(sim["scenario"])
+    try:
+        agents, _p, c_provider, packages, query = _setup(scenario, cfg.get("provider"), cfg.get("player_model"),
+                                                         cfg.get("coach_provider"), cfg.get("coach_model"),
+                                                         packages, documents)
+        by_round: dict = {}
+        for m in sim.get("messages", []):
+            by_round.setdefault(m["round"], []).append(m)
+        order = {slug: i for i, slug in enumerate(DISPLAY_ORDER)}
+        r1, r2, r3 = ([dict(m) for m in sorted(by_round.get(k, []), key=lambda m: order.get(m["slug"], 9))]
+                      for k in (1, 2, 3))
+
+        store.set_status(sim_id, STATUS_FOR_STAGE[n])
+        store.start_round(sim_id, n, ROUND_NAMES[n])
+        if n == 4:
+            coach_call = await CoachAgent(c_provider, packages).decide(scenario, r1, r2, r3)
+            coach_call["data_considered"] = _coach_meta(packages, query)
+            store.set_coach(sim_id, coach_call)
+        else:
+            if n == 1:
+                lineup = scenario.get("lineup") or DEFAULT_LINEUP
+                coros = [a.analyze(scenario, lineup) for a in agents]
+            elif n == 2:
+                coros = [a.debate(scenario, r1) for a in agents]
+            else:
+                coros = [a.final_vote(scenario, r1, r2) for a in agents]
+            for r in await asyncio.gather(*coros):
+                store.add_message(sim_id, r)
+        store.complete_round(sim_id, n)
+        store.finish_stage(sim_id, n)
+        store.set_status(sim_id, "complete" if n == 4 else STATUS_FOR_STAGE[n + 1])
+        return n
+    except Exception as e:
+        log.exception("simulation %s stage %s failed", sim_id, n)
+        store.set_status(sim_id, "failed", public_error(e))
+        raise

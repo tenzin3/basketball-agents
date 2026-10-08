@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from . import config
 
@@ -22,6 +22,21 @@ class SimulationStore:
     def set_coach(self, sim_id: str, coach: dict) -> None: ...
     def get(self, sim_id: str) -> dict | None: ...
     def list(self, limit: int = 20) -> list: ...
+
+    # Step-by-step mode (the browser asks for one stage at a time).
+    def claim_stage(self, sim_id: str, stage: int, stale_after_s: int = 330) -> bool:
+        """True if this caller may run `stage` now: nobody has claimed it, or an earlier claim went stale
+        (that request probably hit the hosting time limit)."""
+        ...
+
+    def finish_stage(self, sim_id: str, stage: int) -> None: ...
+    def reset_stage(self, sim_id: str, stage: int) -> None:
+        """Drop anything a stale attempt left behind for this stage before running it again."""
+        ...
+
+    def count_since(self, hours: float) -> int:
+        """Simulations created in the last `hours` (for the optional daily limit)."""
+        ...
 
 
 class MemorySimulationStore(SimulationStore):
@@ -80,7 +95,8 @@ class MemorySimulationStore(SimulationStore):
             p = self.dir / f"{sim_id}.json"
             if p.exists():
                 self._d[sim_id] = json.loads(p.read_text())
-        return self._d.get(sim_id)
+        d = self._d.get(sim_id)
+        return {k: v for k, v in d.items() if k != "_steps"} if d else None
 
     def list(self, limit=20):
         items = list(self._d.values())
@@ -96,11 +112,104 @@ class MemorySimulationStore(SimulationStore):
         return [{k: x.get(k) for k in ("id", "created_at", "status", "scenario")} for x in items[:limit]]
 
 
+    # step mode (in-process)
+    def claim_stage(self, sim_id, stage, stale_after_s=330):
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            steps = self._d[sim_id].setdefault("_steps", {})
+            st = steps.get(stage)
+            if st is None or (st.get("finished_at") is None and now - st["started_at"] > timedelta(seconds=stale_after_s)):
+                steps[stage] = {"started_at": now, "finished_at": None}
+                return True
+            return False
+
+    def finish_stage(self, sim_id, stage):
+        with self._lock:
+            st = self._d[sim_id].get("_steps", {}).get(stage)
+            if st:
+                st["finished_at"] = datetime.now(timezone.utc)
+
+    def reset_stage(self, sim_id, stage):
+        with self._lock:
+            d = self._d[sim_id]
+            d["messages"] = [m for m in d["messages"] if m.get("round") != stage]
+            d["rounds"] = [r for r in d["rounds"] if r["round_number"] != stage]
+            if stage == 4:
+                d["coach_decision"] = None
+
+    def count_since(self, hours):
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        return sum(1 for x in self._d.values() if x.get("created_at", "") >= cutoff)
+
+
 class SQLSimulationStore(SimulationStore):
+    def __init__(self):
+        from .db.session import ensure_runtime_tables
+
+        ensure_runtime_tables()
+
     def _s(self):
         from .db.session import session_scope
 
         return session_scope()
+
+    def claim_stage(self, sim_id, stage, stale_after_s=330):
+        from sqlalchemy import select, update
+        from sqlalchemy.exc import IntegrityError
+
+        from .db import models as m
+
+        try:
+            with self._s() as s:
+                s.add(m.SimulationStep(simulation_id=sim_id, stage=stage))
+            return True
+        except IntegrityError:
+            pass
+        now = datetime.now(timezone.utc)
+        with self._s() as s:
+            row = s.scalar(select(m.SimulationStep).where(m.SimulationStep.simulation_id == sim_id,
+                                                          m.SimulationStep.stage == stage))
+            if row is None or row.finished_at is not None:
+                return False
+            started = row.started_at if row.started_at.tzinfo else row.started_at.replace(tzinfo=timezone.utc)
+            if now - started <= timedelta(seconds=stale_after_s):
+                return False
+            # take over the stale claim; the WHERE on started_at makes this a compare-and-swap
+            res = s.execute(update(m.SimulationStep).where(m.SimulationStep.id == row.id,
+                                                           m.SimulationStep.started_at == row.started_at)
+                            .values(started_at=now))
+            return res.rowcount == 1
+
+    def finish_stage(self, sim_id, stage):
+        from sqlalchemy import update
+
+        from .db import models as m
+
+        with self._s() as s:
+            s.execute(update(m.SimulationStep).where(m.SimulationStep.simulation_id == sim_id, m.SimulationStep.stage == stage)
+                      .values(finished_at=datetime.now(timezone.utc)))
+
+    def reset_stage(self, sim_id, stage):
+        from sqlalchemy import delete
+
+        from .db import models as m
+
+        with self._s() as s:
+            s.execute(delete(m.SimulationMessage).where(m.SimulationMessage.simulation_id == sim_id,
+                                                        m.SimulationMessage.round_number == stage))
+            s.execute(delete(m.SimulationRound).where(m.SimulationRound.simulation_id == sim_id,
+                                                      m.SimulationRound.round_number == stage))
+            if stage == 4:
+                s.execute(delete(m.CoachDecision).where(m.CoachDecision.simulation_id == sim_id))
+
+    def count_since(self, hours):
+        from sqlalchemy import func, select
+
+        from .db import models as m
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        with self._s() as s:
+            return s.scalar(select(func.count()).select_from(m.Simulation).where(m.Simulation.created_at >= cutoff)) or 0
 
     def create(self, scenario, llm_config):
         from .db import models as m

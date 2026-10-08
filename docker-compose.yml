@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: hoop
       POSTGRES_DB: hoopcouncil
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # only this computer can connect (the password is a simple default)
     volumes:
       - hoop_pg:/var/lib/postgresql/data
 volumes:
