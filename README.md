@@ -124,9 +124,8 @@ Your data is kept either way.
 
 1. Type any basketball question and press Enter, or click a suggestion. For example: "Who was the best playoff
    scorer of the five?" or "We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?"
-2. Choose a **Model** under the box.
-3. Watch the five players answer, argue and give their final word, then read the Coach's answer.
-4. Click **Why did … say this?** under a message to see the data behind it, or click a player's picture at the top
+2. Watch the five players answer, argue and give their final word, then read the Coach's answer.
+3. Click **Why did … say this?** under a message to see the data behind it, or click a player's picture at the top
    to see their full stats. **How it works** (top right) shows the exact instructions each AI gets.
 
 You can also ask from the terminal:
@@ -138,7 +137,7 @@ cd backend
 
 ### Choosing a model
 
-Set `HOOP_LLM_PROVIDER` in `.env`, or pick one from the **Model** menu on the website.
+Set `HOOP_LLM_PROVIDER` in `.env` and restart `make dev`. (In the terminal, `simulate.py --provider` picks one per question.)
 
 | Choice | What you need | Good to know |
 |---|---|---|
@@ -198,8 +197,8 @@ database for the stats. Only the AI answers come from OpenRouter. The settings a
 
 ### Step by step
 
-1. **Try OpenRouter on your Mac first.** Put your key in `.env`, run `make dev`, pick **OpenRouter** under the chat box
-   and ask a question:
+1. **Try OpenRouter on your Mac first.** Put your key in `.env`, run `make dev` and ask a question
+   (the server uses OpenRouter by default; set `HOOP_LLM_PROVIDER=openrouter` if your `.env` says otherwise):
    ```bash
    OPENROUTER_API_KEY=sk-or-...
    ```

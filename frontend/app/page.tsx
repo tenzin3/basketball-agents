@@ -10,10 +10,6 @@ import { FULL_NAME } from "@/lib/format";
 import type { SimMessage, Simulation, SiteConfig } from "@/lib/types";
 
 const STORAGE_KEY = "hoopcouncil.chat.v1";
-const MODEL_LABELS: Record<string, string> = {
-  openrouter: "OpenRouter", anthropic: "Anthropic", openai: "OpenAI", gemini: "Gemini", local: "Local model (Ollama)",
-  mock: "Mock (offline test)",
-};
 const ORDER = ["curry", "kobe", "jordan", "durant", "lebron"];
 const SUGGESTIONS = [
   "We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?",
@@ -41,7 +37,6 @@ export default function ChatPage() {
   const [ids, setIds] = useState<string[]>([]);
   const [sims, setSims] = useState<Record<string, Simulation>>({});
   const [text, setText] = useState("");
-  const [provider, setProvider] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [why, setWhy] = useState<SimMessage | null>(null);
@@ -110,7 +105,7 @@ export default function ChatPage() {
     setError(null);
     try {
       setAccessCode(code.trim());
-      const { id } = await api.startSimulation({ scenario: { question }, provider: provider || undefined });
+      const { id } = await api.startSimulation({ scenario: { question } });
       const next = [...ids, id];
       setIds(next);
       saveIds(next);
@@ -131,7 +126,6 @@ export default function ChatPage() {
   }
 
   const anyRunning = ids.some((id) => isRunning(sims[id]));
-  const providers = site?.providers ?? Object.keys(MODEL_LABELS);
   const needCode = !!site?.access_code_required;
 
   return (
@@ -227,17 +221,6 @@ export default function ChatPage() {
           </button>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
-          <label className="flex items-center gap-2">
-            Model
-            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded border border-rule bg-white px-2 py-1">
-              <option value="">
-                Default{site ? ` (${MODEL_LABELS[site.default_provider] ?? site.default_provider})` : ""}
-              </option>
-              {providers.filter((p) => p !== site?.default_provider).map((p) => (
-                <option key={p} value={p}>{MODEL_LABELS[p] ?? p}</option>
-              ))}
-            </select>
-          </label>
           {needCode && (
             <label className="flex items-center gap-2">
               Access code
