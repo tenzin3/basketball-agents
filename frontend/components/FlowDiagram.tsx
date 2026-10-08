@@ -1,6 +1,6 @@
 /* Diagram of how HoopCouncil works, drawn in the site's whiteboard style.
    Top row: the data side, built once with `make pipeline`.
-   Bottom row: what happens on every huddle. */
+   Bottom row: what happens on every question. */
 
 const INK = "var(--color-ink)";
 const SOFT = "var(--color-ink-soft)";
@@ -41,7 +41,7 @@ function Arrow({ d, color = INK, dashed = false }: { d: string; color?: string; 
 export function FlowDiagramWide() {
   return (
     <svg viewBox="0 0 1140 600" role="img" className="block w-full"
-      aria-label="Data flows from Basketball Reference and NBA.com through a validated pipeline into a database, becomes a context package per player, and feeds five agents who debate in three rounds before a coach agent makes the call.">
+      aria-label="Stats are collected from Basketball Reference and NBA.com, checked, stored in a database and turned into a fact sheet per player. When you ask a question, five AI players each answer from their own fact sheet over three rounds, then an AI coach gives the final answer.">
       <defs>
         <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill={INK} />
@@ -54,17 +54,17 @@ export function FlowDiagramWide() {
       <line x1={20} x2={1120} y1={292} y2={292} stroke={RULE} strokeDasharray="3 6" />
 
       {/* Row A: data side */}
-      <Box x={20} y={42} w={230} h={210} title="Sources" accent={MARKER}
-        lines={["Basketball Reference:", "  seasons, playoffs, awards,", "  shot zones, play-by-play", "NBA.com (optional):", "  clutch splits, play types", "Rate-limited, cached on disk"]} />
+      <Box x={20} y={42} w={230} h={210} title="1 · Collect" accent={MARKER}
+        lines={["Basketball Reference:", "  seasons, playoffs, awards,", "  where shots came from", "NBA.com (optional):", "  clutch numbers, play types", "Slow on purpose, saved once"]} />
       <Arrow d="M252,147 L292,147" />
-      <Box x={296} y={42} w={240} h={210} title="Pipeline"
-        lines={["Parse every table", "Validate: career totals = sum", "  of seasons, award counts,", "  valid percentages", "Derive: peak score, career", "  phases, archetypes"]} />
+      <Box x={296} y={42} w={240} h={210} title="2 · Check"
+        lines={["Career totals must equal", "  the sum of the seasons", "Award counts must match", "Percentages must make sense", "Then work out best seasons,", "  career stages, play styles"]} />
       <Arrow d="M538,147 L578,147" />
-      <Box x={582} y={42} w={230} h={210} title="Database"
-        lines={["PostgreSQL, one row per", "  season / award / game", "Every stat keeps its source,", "  URL and retrieval time", "Missing data stays missing:", "  never estimated"]} />
+      <Box x={582} y={42} w={230} h={210} title="3 · Store"
+        lines={["A database with one row per", "  season, award and game", "Every number remembers the", "  page it came from", "Missing data stays missing:", "  never guessed"]} />
       <Arrow d="M814,147 L854,147" />
-      <Box x={858} y={42} w={262} h={210} title="Context packages"
-        lines={["One per player, three layers:", "1 · career summary (always)", "2 · season-by-season tables", "3 · detail retrieved for the", "     specific question", "Numbers, not vague prose"]} />
+      <Box x={858} y={42} w={262} h={210} title="4 · Fact sheets"
+        lines={["One per player, in 3 parts:", "· career summary (always)", "· every season, line by line", "· extra detail picked for", "   your question", "Numbers, not vague words"]} />
 
       {/* Row B: per huddle */}
       <Box x={20} y={336} w={190} h={180} title="Your question" accent={RED}
@@ -77,18 +77,18 @@ export function FlowDiagramWide() {
         <text x={14} y={42} fontSize={13} fill="#eef1f4">shot, down 1?</text>
       </g>
       <Arrow d="M212,426 L252,426" />
-      <Box x={256} y={336} w={170} h={180} title="Retrieval"
-        lines={["Question → topics", "\"last shot\" pulls clutch,", "  shot creation, isolation", "\"best scorer\" pulls awards,", "  efficiency, playoffs"]} />
+      <Box x={256} y={336} w={170} h={180} title="Pick the detail"
+        lines={["Your words decide what", "  extra stats are added:", "\"last shot\" → clutch,", "  one-on-one numbers", "\"best scorer\" → awards,", "  efficiency, playoffs"]} />
 
       {/* context → agents */}
       <Arrow d="M989,254 C989,300 700,300 520,334" color={MARKER} dashed />
-      <text x={700} y={272} fontSize={13} fill={MARKER}>each agent gets only its player&apos;s package</text>
+      <text x={600} y={272} fontSize={13} fill={MARKER}>each AI player gets only its own player&apos;s fact sheet</text>
       <Arrow d="M428,426 L462,426" />
 
       {/* five agents */}
       <g>
         <rect x={466} y={336} width={130} height={250} rx={8} fill="var(--color-sheet)" stroke={INK} strokeWidth={2} />
-        <text x={480} y={362} className="font-display" fontSize={19} fontWeight={700} fill={INK}>Five agents</text>
+        <text x={480} y={362} className="font-display" fontSize={19} fontWeight={700} fill={INK}>5 AI players</text>
         {PLAYERS.map((p, i) => (
           <g key={p.name} transform={`translate(492, ${392 + i * 40})`}>
             <circle r={13} fill={p.c} stroke="#fff" strokeWidth={2} />
@@ -102,7 +102,7 @@ export function FlowDiagramWide() {
       <Arrow d="M598,440 L636,450" />
       <Arrow d="M598,500 L636,528" />
       <Box x={640} y={336} w={226} h={70} title="1 · First answers" lines={["each alone, in parallel"]} />
-      <Box x={640} y={418} w={226} h={70} title="2 · Debate" lines={["all five answers revealed"]} />
+      <Box x={640} y={418} w={226} h={70} title="2 · Debate" lines={["read all five, agree or argue"]} />
       <Box x={640} y={500} w={226} h={70} title="3 · Final word" lines={["final answer + who they back"]} />
       <path d="M753,406 L753,416" stroke={INK} strokeWidth={2.5} markerEnd="url(#flow-arrow)" />
       <path d="M753,488 L753,498" stroke={INK} strokeWidth={2.5} markerEnd="url(#flow-arrow)" />
@@ -112,9 +112,9 @@ export function FlowDiagramWide() {
       <g>
         <rect x={906} y={336} width={214} height={250} rx={8} fill="var(--color-sheet)" stroke={INK} strokeWidth={3} />
         <text x={920} y={364} className="font-display" fontSize={21} fontWeight={700} fill={INK}>Coach&apos;s answer</text>
-        <text x={920} y={386} fontSize={13.5} fill={SOFT}>Stronger model reads all</text>
-        <text x={920} y={404} fontSize={13.5} fill={SOFT}>rounds + all five packages;</text>
-        <text x={920} y={422} fontSize={13.5} fill={SOFT}>+ a court diagram for plays</text>
+        <text x={920} y={386} fontSize={13.5} fill={SOFT}>A stronger AI reads it all</text>
+        <text x={920} y={404} fontSize={13.5} fill={SOFT}>and goes with the evidence.</text>
+        <text x={920} y={422} fontSize={13.5} fill={SOFT}>Plays get drawn on a court:</text>
         {/* mini half court */}
         <g transform="translate(934,436)">
           <rect width={158} height={136} rx={3} fill="var(--color-wood)" />
@@ -135,13 +135,13 @@ export function FlowDiagramWide() {
 }
 
 const STEPS: { title: string; body: string; tone: "data" | "huddle" }[] = [
-  { title: "Sources", tone: "data", body: "Basketball Reference seasons, playoffs, awards, shot zones and play-by-play; optional NBA.com clutch splits and play types. Rate-limited and cached." },
-  { title: "Pipeline", tone: "data", body: "Parses every table, validates it (career totals match the seasons, award counts match, percentages are valid) and derives peak scores, career phases and archetypes." },
-  { title: "Database", tone: "data", body: "PostgreSQL. Every stat keeps its source, URL and retrieval time. Missing data stays missing." },
-  { title: "Context packages", tone: "data", body: "One per player: a career summary, season tables, and detail retrieved for your question." },
-  { title: "Your question", tone: "huddle", body: "Ask anything about basketball. The wording decides which detail each agent pulls from its own data." },
-  { title: "Five agents, three rounds", tone: "huddle", body: "Each agent answers alone, then sees all five answers and debates, then gives its final word." },
-  { title: "Coach's answer", tone: "huddle", body: "A stronger model reads everything and answers on the evidence, not the majority. Questions about a play also get an animated court diagram." },
+  { title: "1 · Collect", tone: "data", body: "Seasons, playoffs, awards and shooting data from Basketball Reference, plus optional NBA.com clutch numbers. Downloaded slowly and saved once." },
+  { title: "2 · Check", tone: "data", body: "Career totals must equal the seasons added up, award counts must match, and percentages must make sense. Then best seasons, career stages and play styles are worked out." },
+  { title: "3 · Store", tone: "data", body: "A database where every number remembers the page it came from. Missing data stays missing; nothing is guessed." },
+  { title: "4 · Fact sheets", tone: "data", body: "One per player: a career summary, every season line by line, and extra detail picked for your question." },
+  { title: "Your question", tone: "huddle", body: "Ask anything about basketball. Your words decide which extra stats each AI player gets from its own fact sheet." },
+  { title: "Five AI players, three rounds", tone: "huddle", body: "Each answers alone, then reads all five answers and argues, then gives a final word." },
+  { title: "Coach's answer", tone: "huddle", body: "A stronger AI reads everything and goes with the best evidence, not just the most votes. Questions about a play also get a drawn, animated play." },
 ];
 
 export function FlowDiagramStacked() {

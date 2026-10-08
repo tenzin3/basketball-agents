@@ -8,28 +8,28 @@ import type { PromptPlayer, PromptsResponse } from "@/lib/types";
 type TabKey = "player_system" | "grounding_rules" | "round1" | "round2" | "round3" | "coach_system" | "coach_user";
 
 const TABS: { key: TabKey; label: string; who: string; when: string }[] = [
-  { key: "player_system", label: "Player system prompt", who: "Each of the five agents", when: "Sent with every round. This is where each agent's own career data goes." },
-  { key: "grounding_rules", label: "Grounding rules", who: "Each of the five agents", when: "Inserted into the system prompt as {rules}. The coach gets a shorter version." },
-  { key: "round1", label: "Round 1", who: "Each of the five agents", when: "First answers. Sent to all five at once; no agent sees another's answer." },
-  { key: "round2", label: "Round 2", who: "Each of the five agents", when: "Debate. Every agent now gets all five Round 1 answers and replies to the group." },
-  { key: "round3", label: "Round 3", who: "Each of the five agents", when: "Final word. Every agent gets Round 1 and Round 2, then commits and says whose case it backs." },
-  { key: "coach_system", label: "Coach system prompt", who: "The coach (stronger model)", when: "Holds all five career summaries at once." },
-  { key: "coach_user", label: "Coach task", who: "The coach (stronger model)", when: "All three rounds, plus the answer format. The play and court fields are only filled for questions about a play." },
+  { key: "player_system", label: "Player setup", who: "Each of the five AI players", when: "Sent with every round. It tells the AI who it speaks for and holds that player's fact sheet." },
+  { key: "grounding_rules", label: "Rules", who: "Each of the five AI players", when: "The honesty rules: only use numbers from the fact sheet, say when data is missing, don't pretend to be the real player. Placed into the setup as {rules}. The coach gets a shorter version." },
+  { key: "round1", label: "Round 1", who: "Each of the five AI players", when: "First answers. Sent to all five at once, so none sees another's answer." },
+  { key: "round2", label: "Round 2", who: "Each of the five AI players", when: "Debate. Each one now gets all five Round 1 answers and replies to the group." },
+  { key: "round3", label: "Round 3", who: "Each of the five AI players", when: "Final word. Each one gets Rounds 1 and 2, then gives its final answer and says whose argument it backs." },
+  { key: "coach_system", label: "Coach setup", who: "The coach (a stronger AI model)", when: "Holds all five players' career summaries at once." },
+  { key: "coach_user", label: "Coach task", who: "The coach (a stronger AI model)", when: "All three rounds, plus the shape the answer must take. The play and court parts are only filled in for questions about a play." },
 ];
 
 /** What fills each {placeholder} in the templates. */
 const FILLS: Record<string, string> = {
   name: "the player this participant speaks for (also used inside the grounding rules)",
-  focus: "that agent's focus lenses (different for each player, listed below)",
-  context: "that player's career context package: only its own data, never a teammate's",
+  focus: "the angles this AI player looks from (different for each player, listed below)",
+  context: "that player's fact sheet: only his own numbers, never another player's",
   teammates: "the other four players' names (no stats about them)",
-  rules: "the grounding rules: identical for every player apart from the name",
+  rules: "the honesty rules: the same for every player apart from the name",
   explain: "how to explain numbers to a fan who hasn't seen the data (stat, value, span, comparison)",
   question: "your chat message, exactly as you typed it",
   lineup: "the five on the floor, in case the answer needs a play",
-  proposals: "all five Round 1 answers, trimmed to the play, options, reasoning, data and risks",
+  proposals: "all five Round 1 answers (message, position, reasoning, numbers used, risks, any play)",
   debate: "all five Round 2 answers",
-  contexts: "all five players' career summaries (layer 1)",
+  contexts: "all five players' career summaries (part 1 of each fact sheet)",
   round1: "all five Round 1 answers",
   round2: "all five Round 2 answers",
   round3: "all five Round 3 votes",
@@ -61,9 +61,9 @@ function AgentCard({ p, open, onToggle }: { p: PromptPlayer; open: boolean; onTo
   return (
     <li className="flex flex-col rounded-md border border-rule bg-sheet p-4" style={{ borderTop: `5px solid ${color}` }}>
       <h4 className="font-display text-2xl font-bold" style={{ color }}>{FULL_NAME[p.slug]}</h4>
-      <p className="text-xs text-ink-soft">{p.agent_name}, default slot {p.lineup_slot}</p>
+      <p className="text-xs text-ink-soft">Usual position on the court: {p.lineup_slot}</p>
 
-      <h5 className="mt-3 text-sm font-semibold">Focus lenses</h5>
+      <h5 className="mt-3 text-sm font-semibold">Angles it looks from</h5>
       <ul className="mt-1 flex flex-wrap gap-1">
         {p.focus_areas.map((f) => (
           <li key={f} className="rounded-full border border-rule px-2 py-0.5 text-xs">{f}</li>
@@ -71,25 +71,25 @@ function AgentCard({ p, open, onToggle }: { p: PromptPlayer; open: boolean; onTo
       </ul>
 
       {!p.data_available ? (
-        <p className="mt-3 text-sm text-ink-soft">No career data loaded. Run the pipeline.</p>
+        <p className="mt-3 text-sm text-ink-soft">No career data loaded yet. Run make pipeline.</p>
       ) : (
         <>
-          <h5 className="mt-3 text-sm font-semibold">What its own data supports</h5>
-          <p className="text-sm">{p.archetypes?.length ? p.archetypes.join(", ") : "no archetypes supported"}</p>
+          <h5 className="mt-3 text-sm font-semibold">Play styles the stats support</h5>
+          <p className="text-sm">{p.archetypes?.length ? p.archetypes.join(", ") : "none clearly supported"}</p>
           {!!p.strengths?.length && (
-            <p className="mt-1 text-xs text-ink-soft">Strengths in the data: {p.strengths.join("; ")}</p>
+            <p className="mt-1 text-xs text-ink-soft">Strengths: {p.strengths.join("; ")}</p>
           )}
           {!!p.limitations?.length && (
-            <p className="mt-1 text-xs text-ink-soft">Limitations: {p.limitations.join("; ")}</p>
+            <p className="mt-1 text-xs text-ink-soft">Weaknesses: {p.limitations.join("; ")}</p>
           )}
-          <p className="mt-1 text-xs text-ink-soft">Peak seasons: {p.peak_seasons?.join(", ") || "none"}</p>
+          <p className="mt-1 text-xs text-ink-soft">Best seasons: {p.peak_seasons?.join(", ") || "none"}</p>
           {!!p.not_testable?.length && (
             <p className="mt-1 text-xs text-ink-soft">
-              Told it can&apos;t claim (no data): {p.not_testable.join(", ")}
+              Can&apos;t claim (no data for it): {p.not_testable.join(", ")}
             </p>
           )}
 
-          <h5 className="mt-3 text-sm font-semibold">Retrieved for the sample question</h5>
+          <h5 className="mt-3 text-sm font-semibold">Extra detail pulled in for the example</h5>
           <ul className="mt-1 space-y-0.5 text-xs">
             {(p.retrieved_for_sample ?? []).map((d) => (
               <li key={d.title} className="flex justify-between gap-2">
@@ -97,15 +97,15 @@ function AgentCard({ p, open, onToggle }: { p: PromptPlayer; open: boolean; onTo
                 {typeof d.score === "number" && <span className="tabular text-ink-soft">{d.score.toFixed(2)}</span>}
               </li>
             ))}
-            {!p.retrieved_for_sample?.length && <li className="text-ink-soft">nothing (no retrieval documents yet)</li>}
+            {!p.retrieved_for_sample?.length && <li className="text-ink-soft">nothing yet (run make pipeline)</li>}
           </ul>
           <p className="mt-2 text-xs text-ink-soft">
-            About {p.context_tokens_sent?.toLocaleString()} tokens of its own data per prompt
-            {p.layers_sent?.some((l) => l.includes("omitted")) ? " (season tables trimmed to fit)" : ""}.
+            About {p.context_tokens_sent?.toLocaleString()} tokens (roughly {Math.round((p.context_tokens_sent ?? 0) * 0.75).toLocaleString()} words) of its own data per message
+            {p.layers_sent?.some((l) => l.includes("omitted")) ? " (season lines trimmed to fit)" : ""}.
           </p>
           <button type="button" onClick={onToggle} aria-expanded={open} aria-controls="agent-context"
             className={`mt-3 self-start rounded border px-2.5 py-1 text-sm hover:border-ink ${open ? "border-ink bg-board-2" : "border-rule"}`}>
-            {open ? "Hide its career summary" : "Read its career summary"}
+            {open ? "Hide the career summary" : "Read the career summary"}
           </button>
         </>
       )}
@@ -126,7 +126,7 @@ export default function PromptExplorer() {
   if (err) {
     return (
       <p className="rounded-md border border-marker-red/40 bg-sheet p-4 text-sm">
-        The prompts load from the API at {API_URL} ({err}). Start it with <code>make api</code> and reload.
+        The instructions load from the backend at {API_URL} ({err}). Start it with <code>make dev</code> and reload.
       </p>
     );
   }
@@ -138,11 +138,12 @@ export default function PromptExplorer() {
   return (
     <div className="space-y-12">
       <section aria-labelledby="prompts">
-        <h2 id="prompts" className="font-display text-3xl font-bold">The prompts, round by round</h2>
+        <h2 id="prompts" className="font-display text-3xl font-bold">The exact instructions, round by round</h2>
         <p className="mt-2 max-w-[75ch] leading-relaxed text-ink-soft">
-          These are the exact templates the backend sends, loaded live from the API. Blue <mark className="rounded bg-marker/15 px-1 text-marker">{"{placeholders}"}</mark> are
-          filled in at run time; hover one to see what goes there. Every agent replies with JSON in the format shown. The
-          &quot;message&quot; field becomes its chat bubble; the rest feeds the details panel and &quot;Why did … say this?&quot;.
+          This is word for word what the AI is sent (a &quot;prompt&quot;), loaded live from the backend. The blue{" "}
+          <mark className="rounded bg-marker/15 px-1 text-marker">{"{blanks}"}</mark> are filled in when you ask a question;
+          hover one to see what goes there. The AI answers in a fixed format (JSON). Its &quot;message&quot; becomes the
+          chat bubble you see; the rest feeds the details and &quot;Why did … say this?&quot;.
         </p>
         <div role="tablist" aria-label="Prompt" className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-b border-rule">
           {TABS.map((t) => (
@@ -171,7 +172,7 @@ export default function PromptExplorer() {
               </>
             )}
             <p className="mt-4 text-xs text-ink-soft">
-              Models: players use {data.models.player_provider} ({data.models.player_model}); the coach uses{" "}
+              AI models: players use {data.models.player_provider} ({data.models.player_model}); the coach uses{" "}
               {data.models.coach_provider} ({data.models.coach_model}).
             </p>
           </aside>
@@ -179,19 +180,19 @@ export default function PromptExplorer() {
       </section>
 
       <section aria-labelledby="differ">
-        <h2 id="differ" className="font-display text-3xl font-bold">How the five agents differ</h2>
+        <h2 id="differ" className="font-display text-3xl font-bold">How the five AI players differ</h2>
         <div className="mt-2 max-w-[75ch] space-y-2 leading-relaxed">
           <p>
-            All five agents get the same templates and the same rules. Three things differ, and they come from the data,
-            not from a persona:
+            All five get the same instructions and the same rules. Only three things differ, and they come from the
+            data, not from a made-up personality:
           </p>
           <ol className="list-decimal space-y-1 pl-5">
-            <li><span className="font-semibold">Its own career context.</span> The <code>{"{context}"}</code> slot holds only that player&apos;s stats, awards, shot profile, peak seasons and limitations. An agent never sees a teammate&apos;s numbers; it only learns their ideas in Round 2.</li>
-            <li><span className="font-semibold">Its focus lenses.</span> Curry&apos;s agent is asked to look at spacing and gravity, Kobe&apos;s at shot creation and footwork, LeBron&apos;s at playmaking. These are angles to examine the situation from, and the prompt says they aren&apos;t a reason to pick itself.</li>
-            <li><span className="font-semibold">What retrieval pulls from its data.</span> The same question pulls different detail for each player, because each one&apos;s documents hold different numbers and have different coverage.</li>
+            <li><span className="font-semibold">Its own fact sheet.</span> The <code>{"{context}"}</code> blank holds only that player&apos;s stats, awards, shooting profile, best seasons and weaknesses. It never sees another player&apos;s numbers; it only hears their arguments in Round 2.</li>
+            <li><span className="font-semibold">The angles it looks from.</span> Curry is looked at through spacing and shooting, Kobe through shot creation and footwork, LeBron through passing and running the offense. These are ways to look at the question, and the instructions say they aren&apos;t a reason to pick its own player.</li>
+            <li><span className="font-semibold">The extra detail your question pulls in.</span> The same question pulls different numbers for each player, because each one&apos;s records are different and cover different years.</li>
           </ol>
           <p className="text-sm text-ink-soft">
-            Sample question for the retrieval below: &quot;{data.sample.question}&quot; (matched: {data.sample.intents.join(", ")}).
+            Example question for the cards below: &quot;{data.sample.question}&quot; (matched: {data.sample.intents.join(", ")}).
           </p>
         </div>
         <ul className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -206,10 +207,10 @@ export default function PromptExplorer() {
           return (
             <div id="agent-context" className="mt-4">
               <h3 className="font-display text-xl font-bold" style={{ color: PLAYER_COLORS[sel.slug] }}>
-                What {SHORT[sel.slug]}&apos;s replies are built from ({"{context}"}): career summary, layer 1 of 3
+                What {SHORT[sel.slug]}&apos;s replies are built from: the career summary (part 1 of 3)
               </h3>
               <p className="mt-1 text-sm text-ink-soft">
-                Generated from the database. Season tables (layer 2) and the retrieved detail listed above come after this.
+                Written automatically from the database. The season-by-season lines (part 2) and the extra detail listed above come after this.
               </p>
               <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border border-rule bg-white p-4 text-[12.5px] leading-relaxed">
                 {sel.layer1_text}

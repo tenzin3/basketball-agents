@@ -8,7 +8,7 @@ const atkinson = Atkinson_Hyperlegible({ subsets: ["latin"], weight: ["400", "70
 
 export const metadata: Metadata = {
   title: "HoopCouncil",
-  description: "Five statistical player agents debate a basketball situation; a coach agent makes the call.",
+  description: "Ask any basketball question. Five AI players answer from real career stats, debate it, and an AI coach gives the final answer.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
