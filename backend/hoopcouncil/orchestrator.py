@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_LINEUP = {"PG": "Stephen Curry", "SG": "Kobe Bryant", "SF": "Michael Jordan", "PF": "Kevin Durant",
                   "C / Point Forward": "LeBron James"}
-ROUND_NAMES = {1: "Independent analysis", 2: "Discussion", 3: "Final position", 4: "Coach's call"}
+ROUND_NAMES = {1: "First answers", 2: "Debate", 3: "Final word", 4: "Coach's answer"}
 
 
 class MissingDataError(RuntimeError):
@@ -24,11 +24,9 @@ class MissingDataError(RuntimeError):
 
 
 def normalize_scenario(s: dict) -> dict:
-    out = dict(s)
-    out.setdefault("quarter", 4)
-    out.setdefault("question", "What play should we run and who should take the shot?")
-    if out.get("shot_clock") is None and isinstance(out.get("game_clock"), (int, float)):
-        out["shot_clock"] = min(24, out["game_clock"])
+    """A chat question; any extra game-state fields are optional and passed through as context."""
+    out = {k: v for k, v in dict(s).items() if v not in (None, "")}
+    out["question"] = (out.get("question") or "").strip() or "Who should take the final shot when we're down one?"
     return out
 
 

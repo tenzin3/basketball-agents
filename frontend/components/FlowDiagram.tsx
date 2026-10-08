@@ -50,7 +50,7 @@ export function FlowDiagramWide() {
 
       {/* Row labels */}
       <text x={20} y={26} className="font-display" fontSize={18} fontWeight={600} fill={MARKER}>Built once, from real data</text>
-      <text x={20} y={316} className="font-display" fontSize={18} fontWeight={600} fill={RED}>Every time you start a huddle</text>
+      <text x={20} y={316} className="font-display" fontSize={18} fontWeight={600} fill={RED}>Every time you ask a question</text>
       <line x1={20} x2={1120} y1={292} y2={292} stroke={RULE} strokeDasharray="3 6" />
 
       {/* Row A: data side */}
@@ -67,18 +67,18 @@ export function FlowDiagramWide() {
         lines={["One per player, three layers:", "1 · career summary (always)", "2 · season-by-season tables", "3 · detail retrieved for the", "     specific question", "Numbers, not vague prose"]} />
 
       {/* Row B: per huddle */}
-      <Box x={20} y={336} w={190} h={180} title="Your situation" accent={RED}
-        lines={["Score, clock, timeouts,", "defense, possession,", "and your question"]} />
-      {/* scoreboard chip */}
-      <g transform="translate(34,446)">
-        <rect width={162} height={50} rx={6} fill={INK} />
-        <text x={22} y={34} textAnchor="middle" className="font-display" fontSize={24} fontWeight={700} fill="#ffcf5c">-1</text>
-        <text x={80} y={34} textAnchor="middle" className="font-display" fontSize={24} fontWeight={700} fill="#ffcf5c">0:09</text>
-        <text x={138} y={34} textAnchor="middle" className="font-display" fontSize={24} fontWeight={700} fill="#ffcf5c">Q4</text>
+      <Box x={20} y={336} w={190} h={180} title="Your question" accent={RED}
+        lines={["Anything about basketball:", "a play, a matchup, a", "comparison, a what-if"]} />
+      {/* chat bubble */}
+      <g transform="translate(34,440)">
+        <rect width={162} height={56} rx={14} fill={INK} />
+        <path d="M140,56 L156,68 L150,52 z" fill={INK} />
+        <text x={14} y={24} fontSize={13} fill="#eef1f4">Who takes the last</text>
+        <text x={14} y={42} fontSize={13} fill="#eef1f4">shot, down 1?</text>
       </g>
       <Arrow d="M212,426 L252,426" />
       <Box x={256} y={336} w={170} h={180} title="Retrieval"
-        lines={["Question → topics", "\"final shot\" pulls clutch,", "  shot creation, isolation", "\"initiate\" pulls playmaking,", "  usage, pick-and-roll"]} />
+        lines={["Question → topics", "\"last shot\" pulls clutch,", "  shot creation, isolation", "\"best scorer\" pulls awards,", "  efficiency, playoffs"]} />
 
       {/* context → agents */}
       <Arrow d="M989,254 C989,300 700,300 520,334" color={MARKER} dashed />
@@ -101,9 +101,9 @@ export function FlowDiagramWide() {
       <Arrow d="M598,400 L636,372" />
       <Arrow d="M598,440 L636,450" />
       <Arrow d="M598,500 L636,528" />
-      <Box x={640} y={336} w={226} h={70} title="1 · Propose" lines={["each alone, in parallel"]} />
-      <Box x={640} y={418} w={226} h={70} title="2 · Debate" lines={["all five proposals revealed"]} />
-      <Box x={640} y={500} w={226} h={70} title="3 · Vote" lines={["final positions + reasons"]} />
+      <Box x={640} y={336} w={226} h={70} title="1 · First answers" lines={["each alone, in parallel"]} />
+      <Box x={640} y={418} w={226} h={70} title="2 · Debate" lines={["all five answers revealed"]} />
+      <Box x={640} y={500} w={226} h={70} title="3 · Final word" lines={["final answer + who they back"]} />
       <path d="M753,406 L753,416" stroke={INK} strokeWidth={2.5} markerEnd="url(#flow-arrow)" />
       <path d="M753,488 L753,498" stroke={INK} strokeWidth={2.5} markerEnd="url(#flow-arrow)" />
 
@@ -111,10 +111,10 @@ export function FlowDiagramWide() {
       <Arrow d="M868,452 L902,452" />
       <g>
         <rect x={906} y={336} width={214} height={250} rx={8} fill="var(--color-sheet)" stroke={INK} strokeWidth={3} />
-        <text x={920} y={364} className="font-display" fontSize={21} fontWeight={700} fill={INK}>Coach&apos;s call</text>
+        <text x={920} y={364} className="font-display" fontSize={21} fontWeight={700} fill={INK}>Coach&apos;s answer</text>
         <text x={920} y={386} fontSize={13.5} fill={SOFT}>Stronger model reads all</text>
         <text x={920} y={404} fontSize={13.5} fill={SOFT}>rounds + all five packages;</text>
-        <text x={920} y={422} fontSize={13.5} fill={SOFT}>judges logic, not the vote</text>
+        <text x={920} y={422} fontSize={13.5} fill={SOFT}>+ a court diagram for plays</text>
         {/* mini half court */}
         <g transform="translate(934,436)">
           <rect width={158} height={136} rx={3} fill="var(--color-wood)" />
@@ -139,9 +139,9 @@ const STEPS: { title: string; body: string; tone: "data" | "huddle" }[] = [
   { title: "Pipeline", tone: "data", body: "Parses every table, validates it (career totals match the seasons, award counts match, percentages are valid) and derives peak scores, career phases and archetypes." },
   { title: "Database", tone: "data", body: "PostgreSQL. Every stat keeps its source, URL and retrieval time. Missing data stays missing." },
   { title: "Context packages", tone: "data", body: "One per player: a career summary, season tables, and detail retrieved for your question." },
-  { title: "Your situation", tone: "huddle", body: "Score, clock, timeouts, defense and your question decide which detail each agent pulls in." },
-  { title: "Five agents, three rounds", tone: "huddle", body: "Each agent proposes a play alone, then sees all five proposals and debates, then casts a final vote." },
-  { title: "Coach's call", tone: "huddle", body: "A stronger model reads everything and picks the play on basketball logic, not the majority, then draws it on the court." },
+  { title: "Your question", tone: "huddle", body: "Ask anything about basketball. The wording decides which detail each agent pulls from its own data." },
+  { title: "Five agents, three rounds", tone: "huddle", body: "Each agent answers alone, then sees all five answers and debates, then gives its final word." },
+  { title: "Coach's answer", tone: "huddle", body: "A stronger model reads everything and answers on the evidence, not the majority. Questions about a play also get an animated court diagram." },
 ];
 
 export function FlowDiagramStacked() {

@@ -131,7 +131,21 @@ export interface CourtStep {
   destination?: string | null;
 }
 
+export interface PlayCall {
+  play_name?: string;
+  ball_handler?: string;
+  primary_option?: string;
+  secondary_option?: string;
+  third_option?: string;
+  counter?: string;
+  player_roles?: Record<string, string>;
+  off_ball_actions?: string[];
+}
+
 export interface CoachDecisionT {
+  verdict?: string;
+  answer?: string;
+  play?: PlayCall | null;
   play_name?: string;
   ball_handler?: string;
   inbounder?: string | null;
@@ -147,7 +161,7 @@ export interface CoachDecisionT {
   rejected_alternatives?: { proposal?: string; proposed_by?: string; reason?: string }[];
   vote_summary?: string;
   confidence?: number;
-  court?: {
+  court?: null | {
     start_positions?: Record<string, string | null>;
     ball_starts_with?: string;
     play_sequence?: CourtStep[];
@@ -167,4 +181,32 @@ export interface Simulation {
   messages: SimMessage[];
   coach_decision: { decision: CoachDecisionT; model?: string } | null;
   disclaimer?: string;
+}
+
+export interface PromptPlayer {
+  slug: string;
+  name: string;
+  agent_name: string;
+  lineup_slot: string;
+  focus_areas: string[];
+  data_available: boolean;
+  archetypes?: string[];
+  not_testable?: string[];
+  strengths?: string[];
+  limitations?: string[];
+  peak_seasons?: string[];
+  layer1_tokens?: number;
+  layer2_tokens?: number;
+  context_tokens_sent?: number;
+  layers_sent?: string[];
+  retrieved_for_sample?: { title: string; score?: number }[];
+  layer1_text?: string;
+}
+
+export interface PromptsResponse {
+  sample: { question: string; intents: string[]; topics: string[] };
+  templates: Record<"player_system" | "round1" | "round2" | "round3" | "coach_system" | "coach_user" | "grounding_rules" | "coach_rules", string>;
+  models: Record<string, string>;
+  context_token_budget: number;
+  players: PromptPlayer[];
 }

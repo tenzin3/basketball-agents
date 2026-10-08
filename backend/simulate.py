@@ -1,6 +1,6 @@
-"""Phase 3 CLI prototype:  python simulate.py [--clock 8 --margin -1 --defense "switch everything"]
+"""CLI chat:  python simulate.py "any basketball question" [--provider local]
 
-Prints each agent's Round 1-3 responses followed by the Coach's decision.
+Prints each agent's Round 1-3 messages followed by the Coach's answer.
 Equivalent to `hoop simulate`.
 """
 import argparse

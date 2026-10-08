@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FlowDiagramStacked, FlowDiagramWide } from "@/components/FlowDiagram";
+import PromptExplorer from "@/components/PromptExplorer";
 
 export const metadata: Metadata = {
   title: "How it works · HoopCouncil",
@@ -10,23 +11,23 @@ export const metadata: Metadata = {
 const ROUNDS = [
   {
     n: "Round 1",
-    name: "Propose",
-    body: "All five agents get the situation at the same time and answer independently. None of them can see the others. Each returns a play, a primary and secondary option, its own role, the risks, a confidence score, and the stats it relied on.",
+    name: "First answers",
+    body: "All five agents get your question at the same time and answer on their own; none can see another's answer. Each one writes a chat message, a one-line position, its reasoning, the stats it relied on and its risks. If the question is about a play, it also sketches one.",
   },
   {
     n: "Round 2",
     name: "Debate",
-    body: "Every agent now sees all five proposals. It points out spacing problems, matchup advantages and how the defense would react, agrees or disagrees with each teammate, and may change its own plan. Disagreement isn't forced.",
+    body: "Every agent now sees all five first answers. It replies to the group by name, says who it agrees or disagrees with and why, and may change its answer. Disagreement isn't forced.",
   },
   {
     n: "Round 3",
-    name: "Vote",
-    body: "Each agent submits a final recommendation, says whose proposal it backs, and gives its reasons.",
+    name: "Final word",
+    body: "Each agent gives a short final message, its final answer, and which agent's case it backs.",
   },
   {
     n: "Coach",
-    name: "Make the call",
-    body: "A separate agent on a stronger model reads all three rounds plus all five career summaries. It judges shot quality, spacing, clock, turnover risk and counters rather than counting votes, then returns the play, every player's role, why it won, which alternatives it rejected, and step-by-step instructions that the court diagram animates.",
+    name: "The answer",
+    body: "A separate agent on a stronger model reads all three rounds plus all five career summaries. It weighs the evidence rather than counting votes, then gives a headline answer, the reasoning, the data behind it and the ideas it rejected. For questions about a play, it adds the full play call and step-by-step instructions that the court diagram animates.",
   },
 ];
 
@@ -34,11 +35,12 @@ export default function HowItWorks() {
   return (
     <article className="space-y-14">
       <header className="max-w-3xl">
-        <Link href="/" className="text-sm text-marker underline-offset-2 hover:underline">Back to the huddle</Link>
+        <Link href="/" className="text-sm text-marker underline-offset-2 hover:underline">Back to the chat</Link>
         <h1 className="mt-2 font-display text-5xl font-bold sm:text-6xl">How HoopCouncil works</h1>
         <p className="mt-3 text-lg text-ink-soft">
-          It isn&apos;t one AI pretending to be five legends. Each agent reasons only from its own player&apos;s stored
-          career data, they argue it out, and a coach agent decides.
+          You ask any basketball question in the chat. It isn&apos;t one AI pretending to be five legends: each agent
+          reasons only from its own player&apos;s stored career data, they argue it out in three rounds, and a coach agent
+          gives the final answer.
         </p>
       </header>
 
@@ -90,9 +92,9 @@ export default function HowItWorks() {
                 every conference finals and Finals series.
               </li>
               <li className="border-l-[3px] border-marker pl-3">
-                <span className="font-semibold">Retrieved detail.</span> Picked for your question. A final-shot
-                question pulls clutch, shot-creation and isolation data; a question about initiating the offense pulls
-                playmaking and pick-and-roll data.
+                <span className="font-semibold">Retrieved detail.</span> Picked for your question. A last-shot
+                question pulls clutch, shot-creation and isolation data; &quot;who was the better scorer&quot; pulls awards,
+                efficiency and playoff data; a question about running the offense pulls playmaking and pick-and-roll data.
               </li>
             </ul>
             <p>
@@ -104,8 +106,10 @@ export default function HowItWorks() {
         </div>
       </section>
 
+      <PromptExplorer />
+
       <section aria-labelledby="rounds">
-        <h2 id="rounds" className="font-display text-3xl font-bold">Inside a huddle</h2>
+        <h2 id="rounds" className="font-display text-3xl font-bold">Inside one question</h2>
         <ol className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {ROUNDS.map((r) => (
             <li key={r.n} className={`rounded-md border bg-sheet p-4 ${r.n === "Coach" ? "border-2 border-ink" : "border-rule"}`}>
@@ -116,20 +120,21 @@ export default function HowItWorks() {
           ))}
         </ol>
         <p className="mt-5 max-w-[75ch] text-sm text-ink-soft">
-          On the debate page, <span className="text-ink">Why did … say this?</span> opens the exact data that agent was
-          given: the context sections, the documents retrieved for your question, and every stat it cited.
+          Under every chat message, <span className="text-ink">Why did … say this?</span> opens the exact data that agent was
+          given: the context sections, the documents retrieved for your question, and every stat it cited. Each question is
+          discussed fresh; the agents don&apos;t remember earlier questions in the chat.
         </p>
       </section>
 
       <section className="rounded-md border border-rule bg-sheet p-5 sm:p-6">
         <h2 className="font-display text-2xl font-bold">What it isn&apos;t</h2>
         <ul className="mt-2 max-w-[75ch] list-disc space-y-1 pl-5 text-sm leading-relaxed">
-          <li>The agents are statistical profiles, not the real players, and their lines are not quotes.</li>
+          <li>The agents are statistical profiles, not the real players. The avatars are initials, and the messages are not quotes.</li>
           <li>The data has limits. For example, regular-season game logs aren&apos;t collected and Jordan&apos;s shot zones cover only his last four seasons. Each player&apos;s profile page lists what the data can&apos;t tell us.</li>
           <li>A small local model gives rougher reasoning than a hosted one. The data is the same, but the basketball judgment isn&apos;t.</li>
         </ul>
         <Link href="/" className="mt-5 inline-block rounded-md bg-marker px-5 py-2.5 font-display text-xl font-semibold text-white">
-          Set a situation
+          Ask the council
         </Link>
       </section>
     </article>

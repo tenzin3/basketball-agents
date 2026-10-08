@@ -235,11 +235,37 @@ class AgentTests(unittest.TestCase):
                                          store=store, provider="mock", packages=pk, documents=docs))
         self.assertEqual(len(res["round1"]), 5)
         self.assertEqual(len(res["round3"]), 5)
-        self.assertIn("play_name", res["coach_call"]["decision"])
+        self.assertIn("verdict", res["coach_call"]["decision"])
+        self.assertIsNotNone(res["coach_call"]["decision"]["court"])  # a shot question gets a play + court
+        self.assertIn("message", res["round1"][0]["content"])
         sim = store.get(res["id"])
         self.assertEqual(sim["status"], "complete")
         self.assertEqual(len(sim["messages"]), 15)
         self.assertTrue(sim["messages"][0]["data_considered"]["retrieved_documents"])
+
+    def test_open_question_has_no_court(self):
+        from hoopcouncil.orchestrator import run_simulation
+        from hoopcouncil.players import PLAYERS
+
+        ds = synthetic_dataset()
+        d = derive_all(ds)
+        pk = {slug: dict(build_package(ds, d), player=cfg.full_name) for slug, cfg in PLAYERS.items()}
+        docs = {slug: build_documents(ds, d) for slug in PLAYERS}
+        res = asyncio.run(run_simulation({"question": "Who was the best playoff scorer of the five?"},
+                                         provider="mock", packages=pk, documents=docs))
+        self.assertIsNone(res["coach_call"]["decision"]["court"])
+        self.assertIn("comparison / greatness", res["query"]["intents"])
+
+    def test_prompts_format_without_leftover_placeholders(self):
+        from hoopcouncil.agents import prompts as P
+
+        rules = P.GROUNDING_RULES.format(name="X")
+        sysp = P.PLAYER_SYSTEM.format(name="X", focus="a", context="C", teammates="T", rules=rules)
+        self.assertNotIn("{name}", sysp)
+        for t in (P.ROUND1_USER.format(question="q", lineup="l"), P.ROUND2_USER.format(question="q", proposals="p"),
+                  P.ROUND3_USER.format(question="q", proposals="p", debate="d"),
+                  P.COACH_USER.format(question="q", round1="a", round2="b", round3="c", vocab="v")):
+            self.assertIn('"', t)
 
     def test_missing_data_is_an_error(self):
         from hoopcouncil.orchestrator import MissingDataError, run_simulation

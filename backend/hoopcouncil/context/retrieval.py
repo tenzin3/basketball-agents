@@ -31,6 +31,13 @@ INTENTS = [
     (r"post|mismatch|size|smaller", ["post", "mismatch", "positions", "shot-creation"], "mismatch / post"),
     (r"playoff|finals|game 7|elimination|series", ["playoffs", "playoff-scoring", "finals", "pressure"], "playoff pressure"),
     (r"double[- ]team|trap|blitz|hedge", ["playmaking", "turnovers", "off-ball", "spot-up"], "beating pressure on the ball"),
+    (r"\bbest\b|greatest|\bgoat\b|better|compare|versus|\bvs\.?\b|who was|\brank|all[- ]time",
+     ["awards", "efficiency", "playoffs", "playoff-scoring", "finals", "scoring"], "comparison / greatness"),
+    (r"one[- ]on[- ]one|1v1|1-on-1|\biso\b|isolation|create (his|their|a) own", ["isolation", "shot-creation", "mismatch", "self-creation"],
+     "one-on-one scoring"),
+    (r"pass|assist|playmak|vision|set up", ["playmaking", "usage", "turnovers", "pick-and-roll"], "playmaking"),
+    (r"shoot|shooter|jumper|range|midrange|mid-range", ["three-point", "midrange", "shot-profile", "efficiency"], "shooting"),
+    (r"prime|peak|best season|career", ["season", "awards", "efficiency", "playoffs"], "career / peak seasons"),
 ]
 TOKEN_RE = re.compile(r"[a-z0-9%\-\.]+")
 STOP = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "is", "are", "we", "should", "what", "who", "with", "for",

@@ -9,7 +9,6 @@ node_modules/
 frontend/next-env.d.ts
 tests/fixtures/html/
 
-.hoopcouncil_bundle.tgz
 *.egg-info/
 data/processed/
 data/derived/

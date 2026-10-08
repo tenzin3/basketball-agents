@@ -60,20 +60,26 @@ Open three terminal tabs in the project folder. Add a fourth if you use a local 
 
 Then open **http://localhost:3000**:
 
-1. Click a player card to see the full profile: season table, scoring zones, play types, peak seasons and career
-   phases.
-2. Under **Set the situation**, pick a preset or set the scoreboard yourself.
-3. Choose a **Model** and click **Start the huddle**.
-4. Watch Rounds 1–3 fill in. Use **Why did … say this?** to see each agent's data, then read the **Coach's call** and
-   play the animated court diagram.
+1. Type any basketball question in the chat box and press Enter, or click one of the suggestions. For example,
+   "Who was the best playoff scorer of the five?" or "We're down 1 with 9 seconds left and they switch everything.
+   Who takes the last shot?"
+2. Pick a **Model** under the box first (for example **Local model**).
+3. Watch the agents answer as chat messages, each with its own avatar: first answers (given independently), then the
+   debate, then each agent's final word. Use **Why did … say this?** under any message to see the data that agent
+   used.
+4. The **Coach** gives the final answer. Questions about a play also get the full play call and an animated court
+   diagram.
 
-You can also run a debate in the terminal without the website:
+Each question is discussed fresh; the agents don't remember earlier questions. Your chat is kept in this browser
+until you click **Clear chat**. Click an avatar at the top to open that player's data profile, or use **How it
+works** (top right) to see the prompts each agent gets.
+
+You can also ask from the terminal without the website:
 
 ```bash
 cd backend
-../backend/.venv/bin/python simulate.py --provider local
-../backend/.venv/bin/python simulate.py --margin -3 --clock 5 --defense "deny the inbound" \
-  --question "Down 3 with 5 seconds. Who shoots?" --provider local
+../backend/.venv/bin/python simulate.py "Who was the best playoff scorer of the five?" --provider local
+../backend/.venv/bin/python simulate.py "Down 3 with 5 seconds. Who shoots?" --provider local
 ```
 
 ### 3. Choosing a model
@@ -122,7 +128,7 @@ and SQLite is fine for local use.
 | `hoop derive` | Compute aggregates, Finals splits, peak scores, phases, archetypes, strengths/limitations and milestones; validate; write `data/reports/` |
 | `hoop build-context` | Write `career_context_cache/<player>.json` and `<player>_context.txt` for manual inspection, plus retrieval documents |
 | `hoop pipeline` | All four steps above |
-| `python simulate.py --clock 8 --margin -1 --defense "switch everything" --question "Who gets the final shot?"` | CLI debate |
+| `python simulate.py "any basketball question" --provider local` | Ask the council from the terminal |
 | `hoop serve` | API |
 
 Model settings live in `.env`:

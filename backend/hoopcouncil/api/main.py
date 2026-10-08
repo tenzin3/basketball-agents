@@ -146,6 +146,61 @@ def player_quality(player: str):
     return rep
 
 
+DEFAULT_SAMPLE_QUESTION = "We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?"
+
+
+@app.get("/prompts")
+def prompts(question: str = DEFAULT_SAMPLE_QUESTION):
+    """The exact prompt templates every agent receives, plus how each agent's inputs differ:
+    its own context package, its focus lenses, and what retrieval picks for a sample question."""
+    from ..agents import prompts as P
+    from ..context.builder import assemble_agent_context
+    from ..context.retrieval import generate_query, retrieve
+
+    scenario = {"question": question}
+    query = generate_query(scenario)
+    repo = get_repository()
+    players_out = []
+    for slug in DISPLAY_ORDER:
+        cfg = PLAYERS[slug]
+        pkg = load_package(slug)
+        item = {"slug": slug, "name": cfg.full_name, "agent_name": cfg.agent_name, "lineup_slot": cfg.lineup_slot,
+                "focus_areas": list(cfg.focus_areas), "data_available": pkg is not None}
+        if pkg is not None:
+            try:
+                docs = repo.load_documents(slug)
+            except Exception:  # retrieval documents are optional for this view
+                docs = []
+            retrieved = retrieve(docs, query, token_budget=int(config.CONTEXT_TOKEN_BUDGET * 0.35))
+            _text, considered = assemble_agent_context(pkg, retrieved, config.CONTEXT_TOKEN_BUDGET)
+            item.update({
+                "archetypes": [a["archetype"] for a in pkg.get("basketball_archetypes", [])],
+                "not_testable": [a["archetype"] for a in pkg.get("archetypes_all", []) if a["status"] == "insufficient_data"],
+                "strengths": [s["label"] for s in pkg.get("strengths", [])],
+                "limitations": [s["label"] for s in pkg.get("limitations", [])],
+                "peak_seasons": [p["season"] for p in pkg.get("peak_seasons", [])],
+                "layer1_tokens": pkg["text"]["layer1_tokens"], "layer2_tokens": pkg["text"]["layer2_tokens"],
+                "context_tokens_sent": considered.get("approx_tokens"),
+                "layers_sent": considered.get("layers"),
+                "retrieved_for_sample": [{"title": d["title"], "score": d.get("score")} for d in retrieved],
+                "layer1_text": pkg["text"]["layer1"],
+            })
+        players_out.append(item)
+    return {
+        "sample": {"question": question, "intents": query["intents"],
+                   "topics": query["topics"]},
+        "templates": {
+            "player_system": P.PLAYER_SYSTEM, "round1": P.ROUND1_USER, "round2": P.ROUND2_USER,
+            "round3": P.ROUND3_USER, "coach_system": P.COACH_SYSTEM, "coach_user": P.COACH_USER,
+            "grounding_rules": P.GROUNDING_RULES, "coach_rules": P.COACH_RULES,
+        },
+        "models": {"player_provider": config.LLM_PROVIDER, "player_model": config.PLAYER_MODEL or "provider default (cheap tier)",
+                   "coach_provider": config.COACH_PROVIDER, "coach_model": config.COACH_MODEL or "provider default (strong tier)"},
+        "context_token_budget": config.CONTEXT_TOKEN_BUDGET,
+        "players": players_out,
+    }
+
+
 @app.post("/simulations", status_code=202)
 async def create_simulation(req: SimulationRequest):
     store = _store()

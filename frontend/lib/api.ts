@@ -1,4 +1,4 @@
-import type { CareerResponse, PlayersResponse, Profile, Simulation } from "./types";
+import type { CareerResponse, PlayersResponse, Profile, PromptsResponse, Simulation } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -20,6 +20,8 @@ export const api = {
   profile: (slug: string) => get<Profile>(`/players/${slug}`),
   career: (slug: string) => get<CareerResponse>(`/players/${slug}/career`),
   simulation: (id: string) => get<Simulation>(`/simulations/${id}`),
+  prompts: (question?: string) =>
+    get<PromptsResponse>(`/prompts${question ? `?question=${encodeURIComponent(question)}` : ""}`),
   async startSimulation(body: unknown): Promise<{ id: string; status: string }> {
     const r = await fetch(`${API_URL}/simulations`, {
       method: "POST",

@@ -6,15 +6,17 @@ from pydantic import BaseModel, Field
 
 
 class Scenario(BaseModel):
+    """A chat question. The game-state fields are optional extras."""
+    context: Optional[str] = Field(None, description="optional extra context typed by the fan")
     score_margin: Optional[int] = Field(None, description="offense's margin, e.g. -1 = down one")
-    quarter: Optional[int] = 4
+    quarter: Optional[int] = None
     game_clock: Optional[float] = Field(None, description="seconds remaining")
     shot_clock: Optional[float] = None
     timeouts: Optional[int] = None
     possession_start: Optional[str] = Field(None, description="e.g. 'sideline out of bounds', 'backcourt after rebound'")
     defensive_scheme: Optional[str] = None
     opponent_notes: Optional[str] = None
-    question: str = "Who should take the final shot and what play should we run?"
+    question: str = Field(..., min_length=1, max_length=2000)
     lineup: Optional[dict] = None
 
 

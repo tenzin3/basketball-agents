@@ -84,55 +84,57 @@ def _print_block(title, body, width=100):
 def cmd_simulate(a):
     from .orchestrator import run_simulation
 
-    scenario = {"score_margin": a.margin, "quarter": a.quarter, "game_clock": a.clock, "shot_clock": a.shot_clock,
-                "timeouts": a.timeouts, "defensive_scheme": a.defense, "question": a.question}
+    scenario = {"question": a.question, "context": a.context, "score_margin": a.margin, "game_clock": a.clock,
+                "defensive_scheme": a.defense}
+    scenario = {k: v for k, v in scenario.items() if v is not None}
     if a.scenario:
         scenario.update(json.load(open(a.scenario)))
     print("AI simulation based on player statistics and career tendencies. Agents are not the real players.\n")
-    print("Scenario:", json.dumps(scenario))
+    print("You asked:", scenario["question"])
 
     def on_event(kind, payload):
         if kind == "round_start":
-            print(f"\n{'=' * 30} ROUND {payload} {'=' * 30}" if payload != 4 else f"\n{'=' * 30} COACH {'=' * 30}")
+            names = {1: "ROUND 1: FIRST ANSWERS", 2: "ROUND 2: DEBATE", 3: "ROUND 3: FINAL WORD", 4: "COACH"}
+            print(f"\n{'=' * 25} {names.get(payload, payload)} {'=' * 25}")
         elif kind == "round_complete":
             for m in payload["messages"]:
                 c = m["content"]
                 if c.get("parse_error"):
-                    _print_block(m["player"].upper(), ["(could not parse JSON)", m["raw_text"][:800]])
+                    _print_block(m["player"].upper() + " AGENT", ["(could not parse JSON)", m["raw_text"][:800]])
                     continue
+                lines = [c.get("message") or c.get("huddle_line") or ""]
                 rnd = payload["round"]
                 if rnd == 1:
-                    lines = [f"\"{c.get('huddle_line', '')}\"", f"PLAY: {c.get('play_name')} - {c.get('proposed_play')}",
-                             f"PRIMARY: {c.get('primary_option')}", f"SECONDARY: {c.get('secondary_option')}",
-                             f"ROLE: {c.get('your_role')}", f"REASONING: {c.get('tactical_reasoning')}"]
+                    lines.append(f"POSITION: {c.get('position')}")
+                    if isinstance(c.get("play"), dict):
+                        pl = c["play"]
+                        lines.append(f"PLAY: {pl.get('play_name')} | primary: {pl.get('primary_option')} | then: {pl.get('secondary_option')}")
                     lines += [f"DATA: {x}" for x in c.get("data_support", [])[:4]]
-                    lines += [f"RISK: {x}" for x in c.get("risks", [])[:2]]
-                    lines.append(f"CONFIDENCE: {c.get('confidence')}")
                 elif rnd == 2:
-                    lines = [f"\"{c.get('huddle_line', '')}\""]
-                    lines += [f"{e.get('stance', '').upper()} {e.get('of_player')}: {e.get('comment')}" for e in c.get("evaluations", []) if isinstance(e, dict)]
-                    lines.append(f"REVISED: {c.get('revised_proposal')} (changed: {c.get('changed_position')})")
+                    lines += [f"{str(e.get('stance', '')).upper()} {e.get('of_player')}: {e.get('comment')}"
+                              for e in c.get("evaluations", []) if isinstance(e, dict)]
+                    lines.append(f"NOW: {c.get('revised_position')} (changed: {c.get('changed_position')})")
                 else:
-                    lines = [f"VOTE: {c.get('final_vote')}", f"PRIMARY: {c.get('preferred_primary_option')}",
-                             f"REASON: {c.get('reason')}", f"CONFIDENCE: {c.get('confidence')}"]
-                _print_block(m["player"].upper(), lines)
+                    lines.append(f"FINAL: {c.get('final_answer')} | backs {c.get('backs')}")
+                lines.append(f"CONFIDENCE: {c.get('confidence')}")
+                _print_block(m["player"].upper() + " AGENT", lines)
         elif kind == "coach":
             d = payload["decision"]
-            print("\n# COACH'S CALL")
-            for k, lab in (("play_name", "PLAY"), ("ball_handler", "BALL HANDLER"), ("primary_option", "PRIMARY"),
-                           ("secondary_option", "SECONDARY"), ("third_option", "THIRD"), ("counter", "COUNTER")):
-                print(f"\n{lab}\n   {d.get(k)}")
-            if d.get("off_ball_actions"):
-                print("\nOFF-BALL")
-                for x in d["off_ball_actions"]:
-                    print(f"   {x}")
-            print("\nWHY THIS WON\n" + textwrap.fill(str(d.get("reasoning")), 100, initial_indent="   ", subsequent_indent="   "))
-            print("\nCAREER DATA CONSIDERED")
-            for x in (d.get("key_data_points") or []) + (d.get("career_data_considered") or []):
-                print(f"   - {x}")
-            for r in d.get("rejected_alternatives") or []:
-                if isinstance(r, dict):
-                    print(f"   rejected: {r.get('proposal')} ({r.get('proposed_by')}) - {r.get('reason')}")
+            print("\n# COACH'S ANSWER\n")
+            print(textwrap.fill(str(d.get("verdict") or d.get("play_name")), 100))
+            if d.get("answer"):
+                print("\n" + textwrap.fill(str(d["answer"]), 100, initial_indent="   ", subsequent_indent="   "))
+            pl = d.get("play") if isinstance(d.get("play"), dict) else None
+            if pl:
+                for k, lab in (("play_name", "PLAY"), ("ball_handler", "BALL HANDLER"), ("primary_option", "PRIMARY"),
+                               ("secondary_option", "SECONDARY"), ("third_option", "THIRD"), ("counter", "COUNTER")):
+                    if pl.get(k):
+                        print(f"\n{lab}\n   {pl.get(k)}")
+            print("\nWHY\n" + textwrap.fill(str(d.get("reasoning")), 100, initial_indent="   ", subsequent_indent="   "))
+            if d.get("key_data_points"):
+                print("\nDATA")
+                for x in d["key_data_points"]:
+                    print(f"   - {x}")
             print(f"\nCONFIDENCE {d.get('confidence')}")
 
     store = None
@@ -185,14 +187,13 @@ def build_parser():
 
 
 def add_sim_args(p):
-    p.add_argument("--margin", type=int, default=-1, help="score margin from the offense's view (default -1)")
-    p.add_argument("--quarter", type=int, default=4)
-    p.add_argument("--clock", type=float, default=9, help="game clock seconds")
-    p.add_argument("--shot-clock", type=float, default=None)
-    p.add_argument("--timeouts", type=int, default=0)
-    p.add_argument("--defense", default="switch everything")
-    p.add_argument("--question", default="Who should take the final shot and what play should we run?")
-    p.add_argument("--scenario", help="JSON file with scenario fields (overrides flags)")
+    p.add_argument("question", nargs="?", default="We're down 1 with 9 seconds left and they switch everything. Who takes the last shot?",
+                   help="any basketball question, in quotes")
+    p.add_argument("--context", help="optional extra context")
+    p.add_argument("--margin", type=int, help="optional: score margin from the offense's view")
+    p.add_argument("--clock", type=float, help="optional: seconds left")
+    p.add_argument("--defense", help="optional: defensive scheme")
+    p.add_argument("--scenario", help="JSON file with fields (overrides the above)")
     p.add_argument("--provider", help="anthropic|openai|gemini|local|mock (default from HOOP_LLM_PROVIDER)")
     p.add_argument("--player-model"); p.add_argument("--coach-provider"); p.add_argument("--coach-model")
     p.add_argument("--save", action="store_true", help="persist the simulation")
