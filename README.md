@@ -22,35 +22,96 @@ Curry · Kobe · Jordan · Durant · LeBron agents  (cheap model, concurrent)   
 Coach agent (stronger model) → play call + court instructions → FastAPI → Next.js huddle UI
 ```
 
-## Quick start (macOS)
+## Starting the application (macOS)
 
-You need Python 3.10+, Node 20+, and Docker (or any PostgreSQL 14+).
+You need Python 3.10+, Node 20+, and Docker Desktop (or any PostgreSQL 14+). For free local models you also need
+[Ollama](https://ollama.com).
+
+### 1. One-time setup
+
+Run these from the project folder (`basketball-agents/`):
 
 ```bash
-cp .env.example .env            # add ANTHROPIC_API_KEY (or OpenAI / Gemini / local model settings)
-make setup                      # venv + pip install -e backend + npm install
-make db                         # PostgreSQL in Docker (user/pass/db: hoop/hoop/hoopcouncil)
-make pipeline                   # scrape → load → derive → validate → build context packages
-make report                     # data-quality report per player
-make simulate                   # Phase 3 CLI debate in the terminal
-make api                        # FastAPI on http://localhost:8000  (docs at /docs)
-make web                        # UI on http://localhost:3000
+cp .env.example .env     # then pick a model provider (see step 3)
+make setup               # Python venv + backend install + frontend npm install
+make db                  # start PostgreSQL in Docker (user/pass/db: hoop/hoop/hoopcouncil)
+make pipeline            # scrape → database → derive → validate → build context packages (~7 min first time)
+make report              # optional: data-quality report for each player
 ```
 
-**First pipeline run.** Expect about 7 minutes, roughly 110 pages at one request every 3.5 s. That follows Sports
-Reference's 20 requests/minute bot policy. Pages are cached in `data/raw/`, so later runs are instant, and
-`hoop ingest --offline` re-parses from the cache only. If the site ever answers 429, the run stops, keeps what it
-has, and resumes from the cache next time.
+`make pipeline` only needs to run once. It caches every page in `data/raw/`, so later runs take seconds and make no
+new requests. For clutch splits, play types and shot tracking from NBA.com, run the opt-in source once (about 10 min;
+review NBA.com's terms first):
 
-**Optional extra data.** `hoop pipeline --with-nba-stats` adds clutch splits (1996-97+), Synergy play types (2015-16+)
-and shot tracking (2013-14+) from NBA.com. It's off by default; review NBA.com's terms first.
+```bash
+cd backend && ../backend/.venv/bin/hoop pipeline --with-nba-stats && cd ..
+```
 
-**No Docker?** Set `DATABASE_URL=sqlite:///./hoopcouncil.db` in `.env`. PostgreSQL is the target, and SQLite works
-for local experiments.
+### 2. Every time you want to use it
 
-**Trying the UI without API keys.** Choose "Mock (offline test)" in the model menu, or run
-`python simulate.py --provider mock`. The mock produces clearly labelled placeholder reasoning; it still needs the
-data pipeline to have run.
+Open three terminal tabs in the project folder. Add a fourth if you use a local model.
+
+| Tab | Command | Wait for |
+|---|---|---|
+| 1. Database | `make db` | Returns straight away; Docker keeps PostgreSQL running |
+| 2. Local model (only if using `local`) | `OLLAMA_CONTEXT_LENGTH=16384 ollama serve` | `Listening on 127.0.0.1:11434` |
+| 3. API | `make api` | `Uvicorn running on http://127.0.0.1:8000` |
+| 4. Website | `make web` | `Ready` |
+
+Then open **http://localhost:3000**:
+
+1. Click a player card to see the full profile: season table, scoring zones, play types, peak seasons and career
+   phases.
+2. Under **Set the situation**, pick a preset or set the scoreboard yourself.
+3. Choose a **Model** and click **Start the huddle**.
+4. Watch Rounds 1–3 fill in. Use **Why did … say this?** to see each agent's data, then read the **Coach's call** and
+   play the animated court diagram.
+
+You can also run a debate in the terminal without the website:
+
+```bash
+cd backend
+../backend/.venv/bin/python simulate.py --provider local
+../backend/.venv/bin/python simulate.py --margin -3 --clock 5 --defense "deny the inbound" \
+  --question "Down 3 with 5 seconds. Who shoots?" --provider local
+```
+
+### 3. Choosing a model
+
+Set `HOOP_LLM_PROVIDER` in `.env`, or pick a model per debate from the **Model** menu on the website or with
+`--provider` in the terminal.
+
+| Provider | Needs | Notes |
+|---|---|---|
+| `local` | Ollama + `ollama pull llama3.1` | Free and private. Start Ollama with `OLLAMA_CONTEXT_LENGTH=16384`; at the default context length, most of each agent's career data is silently cut off. A full debate (16 model calls) takes several minutes on a laptop. |
+| `anthropic` | `ANTHROPIC_API_KEY` in `.env` | Best reasoning. Player agents use a cheap model, the coach a stronger one. |
+| `openai` / `gemini` | `OPENAI_API_KEY` / `GEMINI_API_KEY` | Same tiering. |
+| `mock` | Nothing | Offline placeholder. Every agent gives the same canned answer; useful only for checking the UI. |
+
+To use a different Ollama model, set `HOOP_PLAYER_MODEL` and `HOOP_COACH_MODEL` to a name from `ollama list`, then
+restart `make api`.
+
+### 4. Stopping
+
+Press Ctrl-C in the API, website and Ollama tabs. To stop the database, run `docker compose stop db`. Your data stays in
+the Docker volume and `data/`.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Website says "Can't reach the API" | Start `make api` (tab 3), then reload the page. |
+| Debate stops with `model 'llama3.1' not found` | Run `ollama pull llama3.1`, or set `HOOP_PLAYER_MODEL` / `HOOP_COACH_MODEL` to a model you already have. |
+| `ollama serve` says the address is already in use | Ollama is already running. Run `pkill ollama` (and quit the menu-bar app), then start it again with the context setting. |
+| Debate fails on a missing API key | The provider in `.env` (default `anthropic`) has no key. Add one, or pick `local` / `mock`. |
+| `make api` can't connect to the database | Start Docker Desktop, then run `make db`. |
+| "No career data" or empty player cards | Run `make pipeline`. |
+| Port 3000 or 8000 already in use | An old server is still running. Stop it with Ctrl-C in its tab, or run `lsof -ti :8000 \| xargs kill`. |
+| An agent's reply "could not be read as JSON" | Small local models sometimes break the format. Run the debate again, or use a hosted model. |
+| Data or code changed but the site looks stale | Restart `make api`. It caches the context packages in memory. |
+
+**No Docker?** Set `DATABASE_URL=sqlite:///./hoopcouncil.db` in `.env` and skip `make db`. PostgreSQL is the target,
+and SQLite is fine for local use.
 
 ## Commands
 
